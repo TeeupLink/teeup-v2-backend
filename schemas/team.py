@@ -36,8 +36,8 @@ class TeamResponse(BaseModel):
     formation_mode: TeamFormationMode
     status: TeamStatus
     formation_notes: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     member_count: int
     members: Optional[List["TeamMemberResponse"]] = Field(default_factory=list, description="팀 멤버 목록")
     meeting_name: Optional[str] = Field(None, description="모임 이름")
@@ -60,7 +60,7 @@ class TeamMemberResponse(BaseModel):
     handicap: Optional[int] = Field(None, description="핸디캡 인덱스")
     average_score: Optional[int] = Field(None, description="직전대회 평균 타수")
     is_guest: Optional[bool] = Field(None, description="게스트 여부")
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -106,7 +106,7 @@ class GuestResponse(BaseModel):
     guest_birthdate: Optional[datetime] = None
     guest_gender: Optional[str] = None
     is_guest: bool = True
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

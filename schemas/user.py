@@ -67,8 +67,8 @@ class UserResponse(BaseModel):
     marketing_consent: Optional[bool] = None
     club_count: Optional[int] = 0
     deactivated_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -81,7 +81,7 @@ class NotificationResponse(BaseModel):
     content: str
     status: str
     read_at: Optional[datetime] = None
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

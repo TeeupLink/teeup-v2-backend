@@ -24,8 +24,8 @@ class InquiryResponse(BaseModel):
     content: str
     type: str
     status: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     model_config = {"from_attributes": True}
 
@@ -52,7 +52,7 @@ class InquiryResponseResponse(BaseModel):
     admin_name: str
     content: str
     is_internal: bool
-    created_at: datetime
+    created_at: Optional[datetime] = None
     
     model_config = {"from_attributes": True}
 

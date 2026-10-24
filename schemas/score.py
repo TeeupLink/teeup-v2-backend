@@ -61,8 +61,8 @@ class ScoreResponse(BaseModel):
     strokes: int
     par: int
     score_to_par: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

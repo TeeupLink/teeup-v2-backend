@@ -39,8 +39,8 @@ class PlanResponse(BaseModel):
     max_members_per_club: Optional[int]
     max_meetings_per_month: Optional[int]
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     model_config = {"from_attributes": True}
 
@@ -65,8 +65,8 @@ class PaymentMethodResponse(BaseModel):
     masked_info: Optional[str]
     is_default: bool
     status: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     model_config = {"from_attributes": True}
 
@@ -89,8 +89,8 @@ class SubscriptionResponse(BaseModel):
     start_date: datetime
     next_billing_date: Optional[datetime]
     end_date: Optional[datetime]
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     model_config = {"from_attributes": True}
 

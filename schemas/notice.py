@@ -33,8 +33,8 @@ class NoticeResponse(BaseModel):
     published_at: Optional[datetime]
     attachment_file: Optional[str] = None
     web_view_link: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     
     model_config = {"from_attributes": True}
 

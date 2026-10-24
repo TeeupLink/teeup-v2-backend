@@ -55,8 +55,8 @@ class ClubResponse(BaseModel):
     additional_info: Optional[str]
     status: ClubStatus
     settlement_enabled: bool = True
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     membership_status: Optional[str] = None  # 현재 사용자의 멤버십 상태
     membership_role: Optional[str] = None  # 현재 사용자의 멤버십 역할
     fee_summary: Optional[ClubFeeSummary] = None  # 회비 요약 (비회원 포함 조회용)
@@ -79,7 +79,7 @@ class ClubMembersResponse(BaseModel):
     user_average_score: Optional[float] = None
     role: ClubRole
     status: str
-    joined_at: datetime
+    joined_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -114,7 +114,7 @@ class ClubMembershipResponse(BaseModel):
     user_id: int
     role: ClubRole
     status: str
-    joined_at: datetime
+    joined_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -209,8 +209,8 @@ class ClubFeeResponse(BaseModel):
     description: Optional[str] = None
     is_active: bool
     created_by: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -240,8 +240,8 @@ class ClubNoticeResponse(BaseModel):
     author_id: int
     author_name: str
     view_count: int
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -271,8 +271,8 @@ class RegulationResponse(BaseModel):
     created_by: int
     created_by_name: Optional[str] = None
     published_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -303,8 +303,8 @@ class RegulationCategoryResponse(BaseModel):
     name: str
     order: int
     description: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -329,8 +329,8 @@ class ClubRegulationResponse(BaseModel):
     created_by: Optional[int] = None
     created_by_name: Optional[str] = None
     published_at: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     # 추가 필드 (프론트엔드에서 사용)
     category_name: Optional[str] = None
 

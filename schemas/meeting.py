@@ -102,8 +102,8 @@ class MeetingResponse(BaseModel):
     club_id: int
     status: MeetingStatus
     cancel_reason: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     club_name: str
     participant_count: int
     social_cost: Optional[float] = None

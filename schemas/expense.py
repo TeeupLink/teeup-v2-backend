@@ -32,8 +32,8 @@ class ExpenseResponse(BaseModel):
     created_by: int
     creator_name: str
     notes: Optional[str]
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
     participants: Optional[List["ExpenseParticipantResponse"]] = None
     settlement_type: Optional[str] = None
 
