@@ -93,7 +93,8 @@ async def get_terms(page: int = Query(1, ge=1, description="페이지 번호"),
                               created_at=term.created_at,
                               updated_at=term.updated_at))
 
-        return TermsListResponse(terms=terms_data, total=total, page=page, size=size)
+        total_pages = (total + size - 1) // size if size > 0 else 0
+        return TermsListResponse(terms=terms_data, total=total, page=page, size=size, total_pages=total_pages)
 
     except HTTPException:
         raise

@@ -303,6 +303,9 @@ async def create_round(meeting_data: RoundingMeetingCreate,
                 from utils.notification_service import create_notification
                 from models import NotificationType
 
+                club = db.query(Club).filter(Club.id == club_id).first()
+                club_name = club.name if club else "클럽"
+
                 for user_id in meeting_data.selected_participants:
                     try:
                         create_notification(
@@ -311,7 +314,7 @@ async def create_round(meeting_data: RoundingMeetingCreate,
                             notification_type=NotificationType.MEETING_REMINDER,  # 적절한 타입으로 변경 가능
                             title="프라이빗 라운딩 초대",
                             content=
-                            f"'{club.name}' 클럽의 프라이빗 라운딩 '{meeting_data.name}'에 초대되었습니다.\n일시: {meeting_data.meeting_time.strftime('%Y년 %m월 %d일 %H:%M') if meeting_data.meeting_time else '미정'}\n장소: {meeting_data.location or '미정'}"
+                            f"'{club_name}' 클럽의 프라이빗 라운딩 '{meeting_data.name}'에 초대되었습니다.\n일시: {meeting_data.meeting_time.strftime('%Y년 %m월 %d일 %H:%M') if meeting_data.meeting_time else '미정'}\n장소: {meeting_data.location or '미정'}"
                         )
                     except Exception as e:
                         logger.error(f"프라이빗 라운딩 초대 알림 전송 실패 - user_id: {user_id}, error: {str(e)}")

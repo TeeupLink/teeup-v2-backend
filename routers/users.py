@@ -36,7 +36,7 @@ from schemas import (
 from pydantic import BaseModel, Field, validator
 from routers.auth import get_current_user, get_current_active_user
 
-from utils.permissions import require_user_or_admin
+from utils.permissions import PermissionChecker, require_user_or_admin
 
 # 로깅 설정
 logger = logging.getLogger(__name__)
@@ -729,7 +729,7 @@ async def delete_my_account(db: Session = Depends(get_db), current_user: User = 
         db.commit()
 
         logger.info(f"회원 탈퇴 완료 - user_id: {current_user.id}")
-        return MessageResponse(message="회원 탈퇴가 완료되었습니다")
+        return MessageResponse(message="회원 탈퇴가 완료되었습니다", success=True)
 
     except HTTPException:
         raise

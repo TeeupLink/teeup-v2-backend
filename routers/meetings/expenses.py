@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
+from decimal import Decimal
 import json
 import logging
 
@@ -27,6 +28,23 @@ from utils.amount_split import split_amount_10won
 router = APIRouter(prefix="/meetings", tags=["비용 정산"])
 
 # ===== 헬퍼 함수 =====
+
+# get_current_active_user 는 User ORM 객체를 돌려준다 (dict 가 아니다).
+# 과거에 이 파일이 current_user 를 dict 로 보고 .get() 을 호출해 전 엔드포인트가
+# AttributeError -> 500 이 됐다. 다른 경로에서 dict 로 넘어오는 경우도 있어 둘 다 받는다.
+def _user_id(current_user) -> Optional[int]:
+    """current_user 에서 사용자 ID 를 꺼낸다 (dict / ORM 객체 모두 지원)."""
+    if isinstance(current_user, dict):
+        return current_user.get("id")
+    return getattr(current_user, "id", None)
+
+
+def _is_admin(current_user) -> bool:
+    """관리자 계정인지. get_current_active_user 경로로는 관리자가 올 수 없다."""
+    if isinstance(current_user, dict):
+        return current_user.get("type") == "admin"
+    return False
+
 
 def _eip_to_response(eip: ExpenseItemParticipant, expense_id: int, db: Session) -> ExpenseParticipantResponse:
     """ExpenseItemParticipant를 ExpenseParticipantResponse로 변환"""
@@ -101,7 +119,7 @@ async def get_meeting_expenses(
     page: int = 1,
     limit: int = 10,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """모임 비용 목록 조회"""
     try:
@@ -114,12 +132,11 @@ async def get_meeting_expenses(
             )
         
         # 관리자 권한 확인 (관리자는 모든 데이터 조회 가능)
-        user_type = current_user.get('type', 'user')
-        if user_type != 'admin':
+        if not _is_admin(current_user):
             # 클럽 멤버 권한 확인
             membership = db.query(ClubMembership).filter(
                 ClubMembership.club_id == meeting.club_id,
-                ClubMembership.user_id == current_user.get('id')
+                ClubMembership.user_id == _user_id(current_user)
             ).first()
             
             if not membership:
@@ -132,7 +149,8 @@ async def get_meeting_expenses(
         expenses = db.query(Expense).filter(Expense.meeting_id == meeting_id).order_by(Expense.created_at.desc()).offset(skip).limit(limit).all()
         total = db.query(Expense).filter(Expense.meeting_id == meeting_id).count()
         expense_responses = [_build_expense_response(e, db) for e in expenses]
-        return ExpenseListResponse(expenses=expense_responses, total=total, page=page, limit=limit)
+        total_pages = (total + limit - 1) // limit if limit > 0 else 0
+        return ExpenseListResponse(expenses=expense_responses, total=total, page=page, limit=limit, total_pages=total_pages)
         
     except HTTPException:
         raise
@@ -148,7 +166,7 @@ async def create_meeting_expense(
     meeting_id: int,
     expense_data: ExpenseCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """모임 비용 등록"""
     try:
@@ -163,7 +181,7 @@ async def create_meeting_expense(
         # 클럽 멤버 권한 확인
         membership = db.query(ClubMembership).filter(
             ClubMembership.club_id == meeting.club_id,
-            ClubMembership.user_id == current_user.get('id')
+            ClubMembership.user_id == _user_id(current_user)
         ).first()
         
         if not membership:
@@ -198,7 +216,7 @@ async def create_meeting_expense(
             description=expense_data.description,
             meeting_id=meeting_id,
             club_id=meeting.club_id,
-            created_by=current_user.get('id'),
+            created_by=_user_id(current_user),
             notes=expense_data.notes,
         )
         db.add(expense)
@@ -249,7 +267,7 @@ async def get_meeting_expense(
     meeting_id: int,
     expense_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """모임 비용 상세 조회"""
     try:
@@ -262,12 +280,11 @@ async def get_meeting_expense(
             )
         
         # 관리자 권한 확인 (관리자는 모든 데이터 조회 가능)
-        user_type = current_user.get('type', 'user')
-        if user_type != 'admin':
+        if not _is_admin(current_user):
             # 클럽 멤버 권한 확인
             membership = db.query(ClubMembership).filter(
                 ClubMembership.club_id == meeting.club_id,
-                ClubMembership.user_id == current_user.get('id')
+                ClubMembership.user_id == _user_id(current_user)
             ).first()
             
             if not membership:
@@ -305,7 +322,7 @@ async def update_meeting_expense(
     expense_id: int,
     expense_data: ExpenseUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """모임 비용 수정"""
     try:
@@ -320,7 +337,7 @@ async def update_meeting_expense(
         # 클럽 멤버 권한 확인
         membership = db.query(ClubMembership).filter(
             ClubMembership.club_id == meeting.club_id,
-            ClubMembership.user_id == current_user.get('id')
+            ClubMembership.user_id == _user_id(current_user)
         ).first()
         
         if not membership:
@@ -342,7 +359,7 @@ async def update_meeting_expense(
             )
         
         # 수정 권한 확인 (생성자 또는 리더/매니저)
-        if expense.created_by != current_user.get('id') and membership.role not in [ClubRole.LEADER, ClubRole.MANAGER]:
+        if expense.created_by != _user_id(current_user) and membership.role not in [ClubRole.LEADER, ClubRole.MANAGER]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="비용을 수정할 권한이 없습니다."
@@ -399,7 +416,7 @@ async def delete_meeting_expense(
     meeting_id: int,
     expense_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """모임 비용 삭제"""
     try:
@@ -414,7 +431,7 @@ async def delete_meeting_expense(
         # 클럽 멤버 권한 확인
         membership = db.query(ClubMembership).filter(
             ClubMembership.club_id == meeting.club_id,
-            ClubMembership.user_id == current_user.get('id')
+            ClubMembership.user_id == _user_id(current_user)
         ).first()
         
         if not membership:
@@ -436,7 +453,7 @@ async def delete_meeting_expense(
             )
         
         # 삭제 권한 확인 (생성자 또는 리더/매니저)
-        if expense.created_by != current_user.get('id') and membership.role not in [ClubRole.LEADER, ClubRole.MANAGER]:
+        if expense.created_by != _user_id(current_user) and membership.role not in [ClubRole.LEADER, ClubRole.MANAGER]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="비용을 삭제할 권한이 없습니다."
@@ -466,7 +483,7 @@ async def get_expense_participants(
     meeting_id: int,
     expense_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """비용 참가자 목록 조회"""
     try:
@@ -479,12 +496,11 @@ async def get_expense_participants(
             )
         
         # 관리자 권한 확인 (관리자는 모든 데이터 조회 가능)
-        user_type = current_user.get('type', 'user')
-        if user_type != 'admin':
+        if not _is_admin(current_user):
             # 클럽 멤버 권한 확인
             membership = db.query(ClubMembership).filter(
                 ClubMembership.club_id == meeting.club_id,
-                ClubMembership.user_id == current_user.get('id')
+                ClubMembership.user_id == _user_id(current_user)
             ).first()
             
             if not membership:
@@ -531,11 +547,10 @@ async def mark_participant_paid(
     expense_id: int,
     data: MarkParticipantPaidBody = Body(...),
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """정산 참가자 납부 완료/미완료 표시 (모임 관리 권한자만 가능, user_id 또는 guest_id로 일괄 업데이트)"""
     try:
-        from decimal import Decimal
         from sqlalchemy import and_
         from utils.datetime_utils import get_kst_now
 
@@ -549,7 +564,7 @@ async def mark_participant_paid(
         if not expense:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="정산을 찾을 수 없습니다.")
 
-        user_id = current_user.get("id") if isinstance(current_user, dict) else getattr(current_user, "id", None)
+        user_id = _user_id(current_user)
         if not user_id or not can_manage_settlement(meeting_id, user_id, db):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="정산 관리를 할 권한이 없습니다.")
 
@@ -605,7 +620,7 @@ async def update_expense_participant(
     participant_id: int,
     participant_data: ExpenseParticipantUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """비용 참가자 상태 변경"""
     try:
@@ -620,7 +635,7 @@ async def update_expense_participant(
         # 클럽 멤버 권한 확인
         membership = db.query(ClubMembership).filter(
             ClubMembership.club_id == meeting.club_id,
-            ClubMembership.user_id == current_user.get('id')
+            ClubMembership.user_id == _user_id(current_user)
         ).first()
         
         if not membership:
@@ -649,7 +664,7 @@ async def update_expense_participant(
         item = db.query(ExpenseItem).filter(ExpenseItem.id == participant.expense_item_id, ExpenseItem.expense_id == expense_id).first()
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="참가자를 찾을 수 없습니다.")
-        if participant.user_id != current_user.get('id') and membership.role not in [ClubRole.LEADER, ClubRole.MANAGER]:
+        if participant.user_id != _user_id(current_user) and membership.role not in [ClubRole.LEADER, ClubRole.MANAGER]:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="참가자 상태를 변경할 권한이 없습니다.")
         if participant_data.amount_paid is not None:
             participant.amount_paid = participant_data.amount_paid
