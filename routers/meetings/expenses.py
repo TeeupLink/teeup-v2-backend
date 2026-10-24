@@ -137,6 +137,7 @@ async def get_meeting_expenses(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("비용 정산 처리 중 오류: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="서버 내부 오류가 발생했습니다."
@@ -236,6 +237,7 @@ async def create_meeting_expense(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("비용 정산 처리 중 오류: %s", e)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -291,6 +293,7 @@ async def get_meeting_expense(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("비용 정산 처리 중 오류: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="서버 내부 오류가 발생했습니다."
@@ -384,6 +387,7 @@ async def update_meeting_expense(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("비용 정산 처리 중 오류: %s", e)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -450,6 +454,7 @@ async def delete_meeting_expense(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("비용 정산 처리 중 오류: %s", e)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -506,6 +511,7 @@ async def get_expense_participants(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("비용 정산 처리 중 오류: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="서버 내부 오류가 발생했습니다."
@@ -658,6 +664,7 @@ async def update_expense_participant(
     except HTTPException:
         raise
     except Exception as e:
+        logger.exception("비용 정산 처리 중 오류: %s", e)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
