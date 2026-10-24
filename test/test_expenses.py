@@ -29,7 +29,7 @@ from database import Base, SessionLocal, engine  # noqa: E402
 import models  # noqa: F401,E402  (모든 모델을 Base.metadata 에 등록)
 from models import Club, ClubMembership, Meeting, MeetingParticipant, User  # noqa: E402
 from routers.auth import get_current_active_user  # noqa: E402
-from routers.meetings.expenses import router as expenses_router  # noqa: E402
+from routers.meetings.expenses import router as expenses_router, rounds_expenses_router  # noqa: E402
 from routers.users import router as users_router  # noqa: E402
 
 USER_ID = 1
@@ -89,6 +89,7 @@ def client():
 
     app = FastAPI()
     app.include_router(expenses_router, prefix="/api/v1")
+    app.include_router(rounds_expenses_router, prefix="/api/v1")
     app.include_router(users_router, prefix="/api/v1")
 
     # 운영과 같은 모양으로 넘긴다: get_current_active_user 는 dict 가 아니라
@@ -139,6 +140,43 @@ def test_정산목록_페이지수_계산(client):
     body = res.json()
     assert body["total"] == 1
     assert body["total_pages"] == 1
+
+
+def test_앱경로_rounds_expenses(client):
+    """앱(1.0, 1.0.1)은 /rounds/{id}/expenses 를 호출한다.
+
+    이 경로가 서버에 없어서 정산 화면이 404 를 받고 있었다.
+    이미 배포된 앱을 바꿀 수 없으므로 같은 핸들러를 /rounds 에도 붙였다.
+    """
+    res = client.get(f"/api/v1/rounds/{MEETING_ID}/expenses")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert "total_pages" in body
+
+    # /meetings 경로와 같은 결과여야 한다
+    other = client.get(f"/api/v1/meetings/{MEETING_ID}/expenses")
+    assert other.status_code == 200, other.text
+    assert body == other.json()
+
+
+def test_앱경로_rounds_expenses_등록과_수정(client):
+    """/rounds 경로로도 등록·수정이 되는지."""
+    res = client.post(
+        f"/api/v1/rounds/{MEETING_ID}/expenses",
+        json={"title": "카트비", "amount": 80000, "total_participants": 1, "participant_ids": [1]},
+    )
+    assert res.status_code == 200, res.text
+    expense_id = res.json()["id"]
+
+    res = client.put(
+        f"/api/v1/rounds/{MEETING_ID}/expenses/{expense_id}",
+        json={"amount": 60000},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["amount"] == 60000.0
+
+    res = client.delete(f"/api/v1/rounds/{MEETING_ID}/expenses/{expense_id}")
+    assert res.status_code == 200, res.text
 
 
 def test_회원탈퇴_200(client):

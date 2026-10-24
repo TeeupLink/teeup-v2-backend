@@ -19,8 +19,8 @@ from .teams import router as teams_router
 # 점수 관리
 from .scores import router as scores_router, meeting_score_router, round_score_router
 
-# 비용 관리
-from .expenses import router as expenses_router
+# 비용 관리 (앱은 /rounds/{id}/expenses 를 호출하므로 같은 핸들러를 두 경로에 붙인다)
+from .expenses import router as expenses_router, rounds_expenses_router
 
 # 타입별 전용 API
 from .types.rounds import router as rounds_router
@@ -36,6 +36,7 @@ __all__ = [
     "meeting_score_router",
     "round_score_router",
     "expenses_router",
+    "rounds_expenses_router",
     "rounds_router",
     "socials_router"
 ]

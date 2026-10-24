@@ -57,6 +57,7 @@ from routers.meetings import (
     meeting_score_router,
     round_score_router,
     expenses_router,
+    rounds_expenses_router,
     rounds_router,
     socials_router,
 )
@@ -193,7 +194,10 @@ app.include_router(teams_router, prefix="/api/v1")  # /teams - 팀 관리
 app.include_router(scores_router, prefix="/api/v1")  # /scores - 점수 관리
 app.include_router(meeting_score_router, prefix="/api/v1")  # /meetings - 모임 스코어 관리
 app.include_router(round_score_router, prefix="/api/v1")  # /rounds - 라운딩 스코어 관리
-app.include_router(expenses_router, prefix="/api/v1")  # /expenses - 비용 관리
+app.include_router(expenses_router, prefix="/api/v1")  # /meetings - 비용 관리
+# 앱(1.0, 1.0.1)은 /rounds/{id}/expenses 를 호출한다. 같은 핸들러를 그 경로에도 붙인다.
+# rounds_router 보다 먼저 등록해 경로가 가려지지 않게 한다.
+app.include_router(rounds_expenses_router, prefix="/api/v1")  # /rounds - 비용 관리 (앱 호환)
 app.include_router(rounds_router, prefix="/api/v1")  # /rounds - 라운딩 전용
 app.include_router(socials_router, prefix="/api/v1")  # /socials - 소셜 모임 전용
 app.include_router(plans.router, prefix="/api/v1")

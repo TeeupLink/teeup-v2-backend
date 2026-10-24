@@ -25,7 +25,9 @@ from routers.auth import get_current_user, get_current_active_user
 from routers.meetings.settlement import can_manage_settlement
 from utils.amount_split import split_amount_10won
 
-router = APIRouter(prefix="/meetings", tags=["비용 정산"])
+# 엔드포인트는 접두어 없는 라우터에 정의하고, 파일 맨 아래에서 두 경로에 붙인다.
+# (앱은 /rounds/{id}/expenses 를, 백오피스·웹은 /meetings/{id}/expenses 를 호출한다)
+_expense_routes = APIRouter(tags=["비용 정산"])
 
 # ===== 헬퍼 함수 =====
 
@@ -113,7 +115,7 @@ def _build_expense_response(expense: Expense, db: Session) -> ExpenseResponse:
 
 # ===== 모임 비용 정산 API =====
 
-@router.get("/{meeting_id}/expenses", response_model=ExpenseListResponse)
+@_expense_routes.get("/{meeting_id}/expenses", response_model=ExpenseListResponse)
 async def get_meeting_expenses(
     meeting_id: int,
     page: int = 1,
@@ -161,7 +163,7 @@ async def get_meeting_expenses(
             detail="서버 내부 오류가 발생했습니다."
         )
 
-@router.post("/{meeting_id}/expenses", response_model=ExpenseResponse)
+@_expense_routes.post("/{meeting_id}/expenses", response_model=ExpenseResponse)
 async def create_meeting_expense(
     meeting_id: int,
     expense_data: ExpenseCreate,
@@ -262,7 +264,7 @@ async def create_meeting_expense(
             detail="서버 내부 오류가 발생했습니다."
         )
 
-@router.get("/{meeting_id}/expenses/{expense_id}", response_model=ExpenseResponse)
+@_expense_routes.get("/{meeting_id}/expenses/{expense_id}", response_model=ExpenseResponse)
 async def get_meeting_expense(
     meeting_id: int,
     expense_id: int,
@@ -316,7 +318,7 @@ async def get_meeting_expense(
             detail="서버 내부 오류가 발생했습니다."
         )
 
-@router.put("/{meeting_id}/expenses/{expense_id}", response_model=ExpenseResponse)
+@_expense_routes.put("/{meeting_id}/expenses/{expense_id}", response_model=ExpenseResponse)
 async def update_meeting_expense(
     meeting_id: int,
     expense_id: int,
@@ -411,7 +413,7 @@ async def update_meeting_expense(
             detail="서버 내부 오류가 발생했습니다."
         )
 
-@router.delete("/{meeting_id}/expenses/{expense_id}", response_model=MessageResponse)
+@_expense_routes.delete("/{meeting_id}/expenses/{expense_id}", response_model=MessageResponse)
 async def delete_meeting_expense(
     meeting_id: int,
     expense_id: int,
@@ -478,7 +480,7 @@ async def delete_meeting_expense(
             detail="서버 내부 오류가 발생했습니다."
         )
 
-@router.get("/{meeting_id}/expenses/{expense_id}/participants", response_model=List[ExpenseParticipantResponse])
+@_expense_routes.get("/{meeting_id}/expenses/{expense_id}/participants", response_model=List[ExpenseParticipantResponse])
 async def get_expense_participants(
     meeting_id: int,
     expense_id: int,
@@ -541,7 +543,7 @@ class MarkParticipantPaidBody(BaseModel):
     amount_paid: Optional[float] = None
 
 
-@router.patch("/{meeting_id}/expenses/{expense_id}/participants/mark-paid")
+@_expense_routes.patch("/{meeting_id}/expenses/{expense_id}/participants/mark-paid")
 async def mark_participant_paid(
     meeting_id: int,
     expense_id: int,
@@ -613,7 +615,7 @@ async def mark_participant_paid(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
-@router.put("/{meeting_id}/expenses/{expense_id}/participants/{participant_id}", response_model=ExpenseParticipantResponse)
+@_expense_routes.put("/{meeting_id}/expenses/{expense_id}/participants/{participant_id}", response_model=ExpenseParticipantResponse)
 async def update_expense_participant(
     meeting_id: int,
     expense_id: int,
@@ -689,3 +691,15 @@ async def update_expense_participant(
 # ===== 레거시 이벤트 비용 정산 API (Phase 3에서 Event 모델 제거됨) =====
 # /events/ 엔드포인트들은 더 이상 작동하지 않음
 # 소셜 모임 비용은 /expenses/meetings/{meeting_id}를 사용하세요
+
+
+# ===== 라우터 노출 =====
+# 같은 핸들러를 두 경로에 붙인다.
+#   /meetings/{id}/expenses  — 원래 경로
+#   /rounds/{id}/expenses    — 앱(1.0, 1.0.1)이 호출하는 경로.
+#                              이미 배포된 앱을 바꿀 수 없어 서버에서 맞춘다.
+router = APIRouter(prefix="/meetings", tags=["비용 정산"])
+router.include_router(_expense_routes)
+
+rounds_expenses_router = APIRouter(prefix="/rounds", tags=["비용 정산"])
+rounds_expenses_router.include_router(_expense_routes)
