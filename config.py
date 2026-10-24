@@ -24,6 +24,20 @@ class Settings(BaseSettings):
     # Environment
     ENVIRONMENT: str = "development"
 
+    # 리버스 프록시 뒤에서 돌 때의 설정.
+    # uvicorn 의 forwarded_allow_ips 기본값은 "127.0.0.1" 인데, 컨테이너는
+    # 도커 게이트웨이 IP 로 요청을 받는다. 그래서 nginx 가 보낸
+    # X-Forwarded-Proto: https 가 무시되고, FastAPI 가 만드는 307 리다이렉트
+    # Location 이 http:// 로 나갔다. iOS 는 ATS 로 http 리다이렉트를 막아
+    # 앱에서 "Network request failed" 가 된다. (/clubs, /notices, /teams)
+    # 컨테이너 포트는 127.0.0.1 에만 공개돼 있어 프록시 외에는 닿지 못한다.
+    FORWARDED_ALLOW_IPS: str = "*"
+
+    # 프록시가 X-Forwarded-Proto 를 아예 안 보내는 경우까지 막는다.
+    # 같은 호스트로 가는 Location 이 http:// 이면 https:// 로 올린다.
+    # None 이면 development 가 아닐 때만 켠다.
+    FORCE_HTTPS_LOCATION: Optional[bool] = None
+
     # Server Configuration
     BACKEND_PORT: str = ""  # 백엔드 서버 포트 (환경 변수 필수)
     # Cloud Run 이 주입하는 포트. 플랫폼이 정해 주는 값이라 기본값을 두지
@@ -169,6 +183,13 @@ class Settings(BaseSettings):
         if not self.FRONTEND_BASE_URL:
             raise ValueError("FRONTEND_BASE_URL 환경 변수가 설정되지 않았습니다.")
         return self.FRONTEND_BASE_URL
+
+    @property
+    def force_https_location(self) -> bool:
+        """리다이렉트 Location 을 https 로 올릴지."""
+        if self.FORCE_HTTPS_LOCATION is not None:
+            return self.FORCE_HTTPS_LOCATION
+        return self.ENVIRONMENT.lower() != "development"
 
     @property
     def backend_port(self) -> int:

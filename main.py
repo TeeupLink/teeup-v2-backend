@@ -141,6 +141,31 @@ class RawRequestLogMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class HttpsLocationMiddleware(BaseHTTPMiddleware):
+    """리다이렉트 Location 을 https 로 올린다.
+
+    FastAPI 는 경로 끝 슬래시가 빠지면 307 로 정식 경로를 알려 준다.
+    그 Location 은 요청 스킴을 그대로 따르는데, 프록시 뒤에서 스킴을
+    http 로 보면 Location 도 http:// 가 된다. iOS 는 ATS 로 http
+    리다이렉트를 차단하므로 앱에서 "Network request failed" 가 난다.
+    (/clubs, /notices, /teams 가 실제로 그랬다)
+
+    forwarded_allow_ips 설정만으로도 보통 해결되지만, 프록시가
+    X-Forwarded-Proto 를 안 보내면 그것도 소용없다. 그래서 응답 쪽에서
+    한 번 더 막는다. 같은 호스트로 가는 http:// 만 바꾸고 외부 주소는
+    건드리지 않는다.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        location = response.headers.get("location")
+        if location and location.startswith("http://"):
+            host = request.headers.get("host")
+            if host and location.startswith(f"http://{host}"):
+                response.headers["location"] = "https://" + location[len("http://"):]
+        return response
+
+
 app.add_middleware(RawRequestLogMiddleware)
 
 # CORS 설정 - 가장 먼저 추가해야 함 (미들웨어는 역순으로 실행됨)
@@ -164,6 +189,11 @@ app.add_middleware(
 
 # CSRF 보호 미들웨어 추가 (CORS 이후)
 app.add_middleware(CSRFProtectionMiddleware)
+
+# 가장 나중에 등록한 미들웨어가 가장 바깥에서 돈다. 라우터가 만든 307 응답을
+# 다른 미들웨어가 손댄 뒤 마지막으로 확인하도록 여기에 둔다.
+if settings.force_https_location:
+    app.add_middleware(HttpsLocationMiddleware)
 
 # # 한국어 로케일 및 인코딩 설정
 # @app.middleware("http")
@@ -291,4 +321,11 @@ if not _IS_PRODUCTION:
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=settings.backend_port)
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=settings.backend_port,
+        # 프록시가 넘긴 X-Forwarded-Proto 를 믿어야 리다이렉트가 https 로 나간다.
+        proxy_headers=True,
+        forwarded_allow_ips=settings.FORWARDED_ALLOW_IPS,
+    )
