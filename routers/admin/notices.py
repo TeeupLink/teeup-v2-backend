@@ -3,12 +3,17 @@
 - content는 TipTap 등 리치 텍스트 에디터의 HTML을 그대로 저장
 - 화면 표시 시 프론트에서 dangerouslySetInnerHTML 또는 v-html로 렌더링
 """
+import logging
+import os
+
+import requests
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
 from sqlalchemy.orm import Session
-import logging
 
+from config import settings
 from database import get_db
 from utils.datetime_utils import get_kst_now
+from utils.google_oauth import get_mime_type, load_access_token
 from .deps import get_admin_user
 
 logger = logging.getLogger(__name__)
@@ -50,6 +55,8 @@ async def upload_notice_file(
     current_user: dict = Depends(get_admin_user),
 ):
     """공지사항 첨부파일 Google Drive 업로드 (관리자)"""
+    from routers.upload import MAX_FILE_SIZE, generate_filename, validate_file
+
     try:
         if not validate_file(file):
             raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다. PNG, JPG, JPEG, PDF만 업로드 가능합니다.")

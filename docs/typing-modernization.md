@@ -96,6 +96,7 @@ FastAPI·Pydantic 은 어노테이션을 런타임에 평가한다. 문법만 �
 - [x] 회귀 가드 재검증
 - [x] `ruff.toml` 추가 (규칙 고정)
 - [x] 커밋·푸시
+- [x] 작업 중 발견한 기존 버그 4건 수정 (7장)
 
 ## 6. 결과
 
@@ -151,24 +152,69 @@ Ruff 도 이 경우는 건드리지 않는다. 그대로 뒀다.
 
 ---
 
-## 7. 이 작업 중에 발견한 것 (별건, 손대지 않음)
+## 7. 이 작업 중에 발견한 버그 (별도 커밋으로 수정 완료)
 
-`F821 undefined-name` 14건 + `F823` 1건이 나왔다. **전환 전에도 똑같이 15건**
-이었으므로 이번 작업과 무관한 기존 문제다. 다만 호출되면 `NameError` 다.
+린트 설정을 붙이면서 `F821 undefined-name` 14건 + `F823` 1건이 드러났다.
+**전환 전에도 똑같이 15건**이었으므로 이번 문법 전환이 만든 것이 아니라,
+원래 있었는데 아무도 안 보고 있던 것이다. 전부 호출되면 터지는 자리다.
 
-가장 심한 곳은 `routers/admin/notices.py` 의 `POST /notices/upload` 로,
-`validate_file` `MAX_FILE_SIZE` `generate_filename` `os` `requests`
-`settings` `get_mime_type` `load_access_token` 8개가 import 되어 있지 않다.
-이 라우터는 `routers/admin/__init__.py:45` 에서 등록되고 실제 경로
-`/api/v1/admin/notices/upload` 로 떠 있다. **백오피스 공지 첨부 업로드는
-현재 동작하지 않을 것이다.**
+### 7-1. `POST /api/v1/admin/notices/upload` — 호출하면 무조건 실패
 
-나머지:
+`routers/admin/notices.py` 의 업로드 함수가 쓰는 이름 8개가 import 되어
+있지 않았다: `validate_file` `MAX_FILE_SIZE` `generate_filename` `os`
+`get_mime_type` `settings` `load_access_token` `requests`.
 
-| 위치 | 정의되지 않은 이름 |
+함수 전체가 `try/except Exception` 으로 감싸여 있어서 `NameError` 가
+500 응답으로 바뀌어 나갔다. 그래서 "가끔 실패" 가 아니라 **항상 실패**인데
+로그에도 평범한 500 으로만 남았다.
+
+- 라우터 등록: `routers/admin/__init__.py:45`
+- 실제 경로: `/api/v1/admin/notices/upload` (앱에 떠 있는 것 확인)
+- 조치: 최상단에 `os` `requests` `settings` `get_mime_type` `load_access_token`
+  추가. `validate_file` `generate_filename` `MAX_FILE_SIZE` 는 `routers/upload.py`
+  에 있는데 최상단에서 끌어오면 `routers.upload -> routers.auth` 로 순환
+  import 가 되므로, `routers/admin/upload.py:33` 과 같은 방식으로 함수 안에서
+  들여온다.
+
+### 7-2. `GET /payments/statistics` — 날짜 형식이 틀리면 400 대신 500
+
+`routers/payments.py` 에 이런 모양이 있었다.
+
+```python
+status_code=status.HTTP_400_BAD_REQUEST,   # 576행: fastapi 의 status 를 의도
+...
+for status in PaymentStatus:               # 596행: 같은 함수 뒤쪽
+```
+
+파이썬은 스코프를 컴파일 시점에 정한다. 뒤에 `for status in ...` 이 있다는
+이유만으로 `status` 는 **함수 전체에서 지역변수**가 되고, 앞쪽 576행은
+아직 대입되지 않은 지역변수를 읽어 `UnboundLocalError` 를 낸다.
+바깥 `except Exception` 이 이를 500 으로 바꾼다.
+
+즉 **잘못된 날짜를 보내면 "날짜 형식이 올바르지 않습니다" 400 이 아니라
+500 이 나간다.** 루프 변수를 `payment_status` 로 바꿨다.
+
+실제로 버그였는지는 고치기 전 코드 객체를 직접 확인했다.
+
+```
+고치기 전: status 가 지역변수인가 = True   -> 576행에서 UnboundLocalError
+고친 후  : status 가 지역변수인가 = False
+```
+
+### 7-3. 나머지 둘
+
+| 위치 | 문제 | 조치 |
+| --- | --- | --- |
+| `routers/admin/inquiries.py:128` | `datetime` 미import 상태로 `datetime.now()` 호출 | `get_kst_now()` 로 교체. 형제 라우터 22곳이 쓰는 방식이고, 서버가 UTC 라 `datetime.now()` 를 그냥 되살리면 KST 기준과 어긋난다 |
+| `routers/admin/meetings.py:2936` | `Meeting` 미import — 관리자 모임 삭제가 항상 실패 | 이 파일 관행대로 함수 안에서 `from models import Meeting` |
+
+### 7-4. 검증
+
+| 항목 | 결과 |
 | --- | --- |
-| `routers/admin/inquiries.py:128` | `datetime` |
-| `routers/admin/meetings.py:2936` | `Meeting` |
-| `routers/payments.py:576` | `status` (대입 전 참조) |
-
-이번 커밋 범위가 아니라 고치지 않았다. 별도 작업으로 다룰 것.
+| `ruff check .` | All checks passed (15 → 0) |
+| 앱 전체 import / 라우트 등록 | 성공 — 순환 import 없음 |
+| `payments.status` 가 전역 참조인지 | 코드 객체로 확인 |
+| notices 가 쓰는 이름 8개 | 전부 해결 확인 |
+| OpenAPI 스키마 | md5 그대로 `59450c5e...` — API 계약 변화 없음 |
+| `test/` 전체 | `55 failed, 17 passed` — 변함없음 |

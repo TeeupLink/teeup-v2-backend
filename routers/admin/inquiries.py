@@ -7,6 +7,7 @@ import logging
 
 from database import get_db
 from models import User
+from utils.datetime_utils import get_kst_now
 from .deps import get_admin_user
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,7 @@ async def update_admin_inquiry(
                 inquiry.status = InquiryStatus(value)
             else:
                 setattr(inquiry, field, value)
-        inquiry.updated_at = datetime.now()
+        inquiry.updated_at = get_kst_now()
         db.commit()
         db.refresh(inquiry)
         return {

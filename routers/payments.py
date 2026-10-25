@@ -593,10 +593,10 @@ async def get_payment_statistics(
         
         # 상태별 통계
         status_stats = {}
-        for status in PaymentStatus:
-            count = query.filter(Payment.status == status).count()
-            amount = query.filter(Payment.status == status).with_entities(func.sum(Payment.amount)).scalar() or 0
-            status_stats[status.value] = {
+        for payment_status in PaymentStatus:
+            count = query.filter(Payment.status == payment_status).count()
+            amount = query.filter(Payment.status == payment_status).with_entities(func.sum(Payment.amount)).scalar() or 0
+            status_stats[payment_status.value] = {
                 "count": count,
                 "amount": float(amount)
             }

@@ -2929,6 +2929,8 @@ async def delete_admin_meeting(meeting_id: int,
                                db: Session = Depends(get_db),
                                current_user: dict = Depends(get_admin_user)):
     """관리자용 모임 삭제"""
+    from models import Meeting
+
     try:
         logger.info(f"관리자 모임 삭제 시작 - meeting_id: {meeting_id}")
 
