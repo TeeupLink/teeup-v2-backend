@@ -183,17 +183,36 @@ def test_통계도_열린다(client):
 
 
 def test_응답스키마에_필수_타임스탬프가_남아있지_않다():
-    """같은 버그가 다시 생기지 않게 스키마 전체를 확인한다."""
+    """같은 버그가 다시 생기지 않게 스키마 전체를 확인한다.
+
+    처음 이 가드는 (1) 이름이 Response 로 끝나는 클래스만 보고 (2) 타임스탬프
+    필드명을 하드코딩해서 세 군데를 놓쳤다. UserMeetingItem.joined_at,
+    HandicapHistoryItem.created_at, BlockedUserItem.blocked_at 는 Response 로
+    끝나지 않는 중첩 클래스였고 blocked_at 은 이름 목록에 없었다.
+    그래서 이제 '응답 쪽 클래스의 모든 필수 datetime' 을 본다.
+
+    필수로 둬도 되는 건 DB 컬럼이 NOT NULL 인 경우뿐이다. 그 예외만
+    NOT_NULL_IN_DB 에 근거(컬럼명)와 함께 적는다. 새 필드가 늘면 여기서 막힌다.
+    """
     import ast
     import os
 
+    # 요청(입력) 스키마는 대상이 아니다 - 거기서는 필수가 맞다
+    REQUEST_HINTS = (
+        "create", "update", "request", "filter", "params",
+        "login", "register", "verify", "search", "query",
+    )
+
+    # 응답에서 필수 datetime 으로 남겨도 되는 필드. 근거는 운영 DB 의 컬럼 정의다.
+    NOT_NULL_IN_DB = {
+        "HandicapHistoryItem.played_at": "user_score_history.played_at",
+        "ClubMemberRoundingHistoryItem.played_at": "user_score_history.played_at",
+        "SubscriptionResponse.start_date": "subscriptions.start_date",
+        "TermsAgreementResponse.agreed_at": "terms_agreements.agreed_at",
+    }
+
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     schemas_dir = os.path.join(here, "schemas")
-    timestamps = {
-        "created_at", "updated_at", "deleted_at", "joined_at", "paid_at",
-        "approved_at", "completed_at", "canceled_at", "cancelled_at",
-        "answered_at", "read_at", "verified_at", "last_login_at",
-    }
 
     offenders = []
     for name in sorted(os.listdir(schemas_dir)):
@@ -202,20 +221,27 @@ def test_응답스키마에_필수_타임스탬프가_남아있지_않다():
         path = os.path.join(schemas_dir, name)
         src = open(path, encoding="utf-8").read()
         for node in ast.walk(ast.parse(src)):
-            if not isinstance(node, ast.ClassDef) or not node.name.endswith("Response"):
+            if not isinstance(node, ast.ClassDef):
+                continue
+            if any(hint in node.name.lower() for hint in REQUEST_HINTS):
                 continue
             for stmt in node.body:
-                if (
-                    isinstance(stmt, ast.AnnAssign)
-                    and isinstance(stmt.target, ast.Name)
-                    and stmt.target.id in timestamps
-                    and stmt.value is None
-                    and (ast.get_source_segment(src, stmt.annotation) or "").strip() == "datetime"
-                ):
-                    offenders.append(f"{name}:{stmt.lineno} {node.name}.{stmt.target.id}")
+                if not (isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)):
+                    continue
+                if stmt.value is not None:  # 기본값이 있으면 필수가 아니다
+                    continue
+                ann = (ast.get_source_segment(src, stmt.annotation) or "").strip()
+                if ann not in ("datetime", "date"):
+                    continue
+                key = f"{node.name}.{stmt.target.id}"
+                if key in NOT_NULL_IN_DB:
+                    continue
+                offenders.append(f"{name}:{stmt.lineno} {key}")
 
     assert not offenders, (
-        "응답 스키마에 필수 datetime 타임스탬프가 남아 있습니다. "
+        "응답 스키마에 필수 datetime 이 남아 있습니다. "
         "DB 에 NULL 인 행이 하나라도 있으면 그 엔드포인트가 500 이 됩니다:\n  "
         + "\n  ".join(offenders)
+        + "\n\nOptional 로 바꾸거나, DB 컬럼이 NOT NULL 이라면 "
+        "NOT_NULL_IN_DB 에 컬럼명을 근거로 적으세요."
     )

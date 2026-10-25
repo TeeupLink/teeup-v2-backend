@@ -51,7 +51,7 @@ class UserMeetingItem(BaseModel):
     club_name: str
     meeting_time: Optional[datetime] = None
     status: str
-    joined_at: datetime
+    joined_at: Optional[datetime] = None
     rounding_completed_at: Optional[datetime] = None
     has_score: bool = False
     gross_score: Optional[int] = None
@@ -77,8 +77,8 @@ class HandicapHistoryItem(BaseModel):
     gross_score: int
     net_score: Optional[float] = None
     handicap_used: float
-    played_at: datetime
-    created_at: datetime
+    played_at: datetime  # user_score_history.played_at 은 DB 가 NOT NULL
+    created_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

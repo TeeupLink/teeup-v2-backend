@@ -30,7 +30,7 @@ class BlockedUserItem(BaseModel):
     user_id: int
     nickname: Optional[str] = None
     profile_image: Optional[str] = None
-    blocked_at: datetime
+    blocked_at: Optional[datetime] = None
 
 
 class BlockedUsersResponse(BaseModel):
