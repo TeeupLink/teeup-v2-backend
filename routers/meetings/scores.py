@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 import logging
 from math import ceil
-from typing import Optional
 
 # from sqlalchemy.dialects import mysql # 디버깅 쿼리출력용
 
@@ -53,7 +52,7 @@ meeting_score_router = APIRouter(prefix="/meetings", tags=["모임 스코어"])
 round_score_router = APIRouter(prefix="/rounds", tags=["라운딩 스코어"])
 
 
-def _build_score_response(score: Score, meeting: Optional[Meeting] = None) -> ScoreResponse:
+def _build_score_response(score: Score, meeting: Meeting | None = None) -> ScoreResponse:
     participant = score.participant
     meeting_obj = meeting or (participant.meeting if participant else None)
     user_obj = participant.user if participant else None
@@ -309,9 +308,9 @@ async def create_score(
 
 @router.get("/", response_model=ScoreListResponse)
 async def get_scores(
-    participant_id: Optional[int] = Query(None, description="참가자 ID"),
-    meeting_id: Optional[int] = Query(None, description="모임 ID"),
-    hole_number: Optional[int] = Query(None, description="홀 번호"),
+    participant_id: int | None = Query(None, description="참가자 ID"),
+    meeting_id: int | None = Query(None, description="모임 ID"),
+    hole_number: int | None = Query(None, description="홀 번호"),
     page: int = Query(1, ge=1, description="페이지 번호"),
     limit: int = Query(20, ge=1, le=100, description="페이지 크기"),
     db: Session = Depends(get_db),

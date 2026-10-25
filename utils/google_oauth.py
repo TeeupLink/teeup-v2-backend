@@ -1,7 +1,6 @@
 import json
 import os
 import time
-from typing import Dict
 
 import requests
 
@@ -15,7 +14,7 @@ class GoogleOAuthError(Exception):
     pass
 
 
-def _read_token_file(path: str) -> Dict:
+def _read_token_file(path: str) -> dict:
     if not os.path.exists(path):
         raise GoogleOAuthError(
             "Google OAuth token.json 파일을 찾을 수 없습니다. 토큰 발급 스크립트를 먼저 실행하세요."
@@ -24,7 +23,7 @@ def _read_token_file(path: str) -> Dict:
         return json.load(f)
 
 
-def _write_token_file(path: str, payload: Dict) -> None:
+def _write_token_file(path: str, payload: dict) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f)
@@ -112,7 +111,7 @@ Google OAuth 인증 유틸리티
 """
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
 from fastapi import HTTPException, status
 import requests
 from config import settings
@@ -132,7 +131,7 @@ def upload_to_drive(
     filename: str,
     folder_id: str,
     share: str | None = None,
-) -> Dict:
+) -> dict:
     """파일을 Google Drive 폴더에 올리고 메타데이터를 돌려준다.
 
     로컬 디스크에 쓰지 않는다. 컨테이너·Cloud Run 은 파일시스템이 휘발이라
@@ -272,8 +271,8 @@ class GoogleOAuth:
         client_type: str,
         redirect_uri: str,
         authorizationCode: str,
-        codeVerifier: Optional[str],
-    ) -> Dict[str, str]:
+        codeVerifier: str | None,
+    ) -> dict[str, str]:
         if client_type not in self.client_ids:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -359,10 +358,10 @@ class GoogleOAuth:
     def exchange_code_for_token(
         self,
         authorizationCode: str,
-        codeVerifier: Optional[str],
+        codeVerifier: str | None,
         redirect_uri: str,
         client_type: str,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         response = None
         """인증 코드를 액세스 토큰으로 교환"""
         try:
@@ -446,7 +445,7 @@ class GoogleOAuth:
                 detail="사용자 정보 조회 중 오류가 발생했습니다",
             )
 
-    def verify_id_token(self, id_token: str) -> Dict[str, Any]:
+    def verify_id_token(self, id_token: str) -> dict[str, Any]:
         """Google ID 토큰 검증"""
         try:
             # Google의 공개 키를 사용하여 ID 토큰 검증

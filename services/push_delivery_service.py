@@ -1,5 +1,4 @@
 import logging
-from typing import Dict, Optional
 
 from firebase_admin import credentials, get_app, initialize_app, messaging
 from sqlalchemy.orm import Session
@@ -43,8 +42,8 @@ def send_push_to_user(
     title: str,
     content: str,
     category: str,
-    target_id: Optional[int] = None,
-    extra_data: Optional[Dict[str, str]] = None,
+    target_id: int | None = None,
+    extra_data: dict[str, str] | None = None,
 ) -> int:
     app = _get_firebase_app()
     if app is None:

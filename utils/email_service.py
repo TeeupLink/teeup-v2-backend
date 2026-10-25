@@ -3,7 +3,6 @@ SMTP를 사용한 이메일 전송 서비스
 fastapi-mail을 사용하여 Gmail SMTP로 이메일을 전송합니다.
 """
 import logging
-from typing import Optional
 from fastapi import HTTPException, status
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 
@@ -14,7 +13,7 @@ logger = logging.getLogger(__name__)
 # 이메일 설정을 lazy loading으로 변경 (모듈 로드 시 생성하지 않음)
 _conf = None
 
-def get_email_config() -> Optional[ConnectionConfig]:
+def get_email_config() -> ConnectionConfig | None:
     """이메일 설정을 가져옵니다 (필요할 때만 생성)"""
     global _conf
     if _conf is None:

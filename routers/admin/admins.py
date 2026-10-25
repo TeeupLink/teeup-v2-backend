@@ -3,7 +3,6 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Optional
 import logging
 
 from database import get_db
@@ -21,8 +20,8 @@ router = APIRouter(tags=["admin-admins"])
 async def get_admin_list(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
-    search: Optional[str] = Query(None),
-    status_filter: Optional[str] = Query(None),
+    search: str | None = Query(None),
+    status_filter: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):

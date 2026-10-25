@@ -3,7 +3,6 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
 import logging
 
 from database import get_db
@@ -17,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/plans", tags=["plans"])
 
-@router.get("/", response_model=List[PlanResponse])
+@router.get("/", response_model=list[PlanResponse])
 async def get_plans(
-    is_active: Optional[bool] = None,
-    plan_type: Optional[str] = None,
+    is_active: bool | None = None,
+    plan_type: str | None = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):

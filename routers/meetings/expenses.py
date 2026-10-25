@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 import json
@@ -34,7 +33,7 @@ _expense_routes = APIRouter(tags=["비용 정산"])
 # get_current_active_user 는 User ORM 객체를 돌려준다 (dict 가 아니다).
 # 과거에 이 파일이 current_user 를 dict 로 보고 .get() 을 호출해 전 엔드포인트가
 # AttributeError -> 500 이 됐다. 다른 경로에서 dict 로 넘어오는 경우도 있어 둘 다 받는다.
-def _user_id(current_user) -> Optional[int]:
+def _user_id(current_user) -> int | None:
     """current_user 에서 사용자 ID 를 꺼낸다 (dict / ORM 객체 모두 지원)."""
     if isinstance(current_user, dict):
         return current_user.get("id")
@@ -480,7 +479,7 @@ async def delete_meeting_expense(
             detail="서버 내부 오류가 발생했습니다."
         )
 
-@_expense_routes.get("/{meeting_id}/expenses/{expense_id}/participants", response_model=List[ExpenseParticipantResponse])
+@_expense_routes.get("/{meeting_id}/expenses/{expense_id}/participants", response_model=list[ExpenseParticipantResponse])
 async def get_expense_participants(
     meeting_id: int,
     expense_id: int,
@@ -537,10 +536,10 @@ async def get_expense_participants(
 
 class MarkParticipantPaidBody(BaseModel):
     """납부 완료 표시 요청"""
-    user_id: Optional[int] = None
-    guest_id: Optional[int] = None
+    user_id: int | None = None
+    guest_id: int | None = None
     is_paid: bool = True
-    amount_paid: Optional[float] = None
+    amount_paid: float | None = None
 
 
 @_expense_routes.patch("/{meeting_id}/expenses/{expense_id}/participants/mark-paid")

@@ -1,7 +1,6 @@
 """
 백오피스 헤더 전역 검색 API
 """
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 import logging
@@ -19,7 +18,7 @@ router = APIRouter(tags=["admin-search"])
 async def global_search(
     q: str = Query(..., min_length=1, max_length=100, description="검색어"),
     limit: int = Query(5, ge=1, le=20, description="카테고리별 최대 결과 수"),
-    types: Optional[str] = Query("users,clubs,meetings,admins", description="검색 대상 (쉼표 구분)"),
+    types: str | None = Query("users,clubs,meetings,admins", description="검색 대상 (쉼표 구분)"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import List, Literal, Optional
+from typing import Literal
 
 from database import get_db
 from models import Club, ClubMembership, Meeting
@@ -34,7 +34,7 @@ def _resolve_club(db: Session, club_id: str):
     return club
 
 
-def _aggregate_by_period(records: List, period: str, date_attr: str = "created_at"):
+def _aggregate_by_period(records: list, period: str, date_attr: str = "created_at"):
     """레코드 리스트를 기간별로 집계"""
     groups = defaultdict(int)
     for r in records:
@@ -61,8 +61,8 @@ async def get_club_stats(
     club_id: str,
     period: Literal["daily", "weekly", "monthly"] = Query("monthly", description="집계 단위: daily, weekly, monthly"),
     days: int = Query(90, ge=7, le=365, description="조회 기간(일) - start_date/end_date 미지정 시 사용"),
-    start_date: Optional[str] = Query(None, description="시작일 (YYYY-MM-DD) - 클럽 생성일 이후"),
-    end_date: Optional[str] = Query(None, description="종료일 (YYYY-MM-DD)"),
+    start_date: str | None = Query(None, description="시작일 (YYYY-MM-DD) - 클럽 생성일 이후"),
+    end_date: str | None = Query(None, description="종료일 (YYYY-MM-DD)"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):

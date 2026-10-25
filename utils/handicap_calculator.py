@@ -4,7 +4,6 @@
 핸디캡 자동 계산 및 관리 로직
 """
 import logging
-from typing import List, Optional
 from decimal import Decimal
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -71,7 +70,7 @@ def calculate_handicap_from_average_score(average_score: float) -> Decimal:
 #     return int(calculate_handicap_from_average_score(average_score))
 
 
-def get_recent_scores(db: Session, user_id: int, count: int = 10) -> List[UserScoreHistory]:
+def get_recent_scores(db: Session, user_id: int, count: int = 10) -> list[UserScoreHistory]:
     """
     최근 N경기 스코어 조회
     
@@ -89,7 +88,7 @@ def get_recent_scores(db: Session, user_id: int, count: int = 10) -> List[UserSc
     return scores
 
 
-def calculate_moving_average(scores: List[UserScoreHistory], count: int = 5) -> Optional[float]:
+def calculate_moving_average(scores: list[UserScoreHistory], count: int = 5) -> float | None:
     """
     이동평균 계산 (최근 N경기 평균)
     
@@ -116,7 +115,7 @@ def calculate_moving_average(scores: List[UserScoreHistory], count: int = 5) -> 
     return round(average, 1)
 
 
-def get_user_handicap_for_formation(db: Session, user_id: int) -> Optional[Decimal]:
+def get_user_handicap_for_formation(db: Session, user_id: int) -> Decimal | None:
     """
     팀 편성에 사용할 핸디캡 조회
     - 경기 기록이 1경기 이상이고 calculated_handicap이 있으면 calculated_handicap 사용
@@ -170,7 +169,7 @@ def validate_handicap(handicap: float) -> bool:
 def update_user_handicap(db: Session,
                          user_id: int,
                          score_count: int = 5,
-                         use_realtime: bool = True) -> Optional[Decimal]:
+                         use_realtime: bool = True) -> Decimal | None:
     """
     사용자 핸디캡 자동 업데이트
     
@@ -247,7 +246,7 @@ def check_all_holes_completed(db: Session, participant_id: int, expected_holes: 
     return len(completed_holes) >= expected_holes
 
 
-def calculate_gross_score(db: Session, participant_id: int) -> Optional[int]:
+def calculate_gross_score(db: Session, participant_id: int) -> int | None:
     """
     참가자의 최종 스코어(Gross Score) 계산
     모든 홀의 strokes 합산
@@ -271,7 +270,7 @@ def calculate_gross_score(db: Session, participant_id: int) -> Optional[int]:
 
 
 def save_score_to_history(db: Session, user_id: int, meeting_id: int, gross_score: int, handicap_used: Decimal,
-                          played_at: datetime) -> Optional[UserScoreHistory]:
+                          played_at: datetime) -> UserScoreHistory | None:
     """
     UserScoreHistory에 스코어 저장
     중복 저장 방지 로직 포함
@@ -315,8 +314,8 @@ def save_score_to_history(db: Session, user_id: int, meeting_id: int, gross_scor
 
 def set_handicap_after_round_on_history(
     db: Session,
-    score_history: Optional[UserScoreHistory],
-    updated_handicap: Optional[Decimal],
+    score_history: UserScoreHistory | None,
+    updated_handicap: Decimal | None,
 ) -> None:
     """이 경기 반영 후 자동 재계산된 핸디캡을 기록에 저장 (기록 내역 표시용)."""
     if score_history is None or updated_handicap is None:
@@ -329,7 +328,7 @@ def set_handicap_after_round_on_history(
 def process_participant_score(db: Session,
                               participant_id: int,
                               meeting_id: int,
-                              score_count: int = 5) -> Optional[Decimal]:
+                              score_count: int = 5) -> Decimal | None:
     """
     참가자 스코어 처리 (스코어 저장 + 핸디캡 업데이트)
     

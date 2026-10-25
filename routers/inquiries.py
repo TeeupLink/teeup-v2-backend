@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 import logging
 
@@ -150,7 +150,7 @@ async def get_inquiry(
 # 문의 수정/답변 등록·수정·삭제는 /api/v1/admin/inquiries 에서 가능
 
 
-@router.get("/types/", response_model=List[dict])
+@router.get("/types/", response_model=list[dict])
 async def get_inquiry_types():
     """문의 타입 목록 조회 (InquiryType enum 기준)"""
     return [
@@ -185,7 +185,7 @@ async def get_inquiry_types():
     ]
 
 
-@router.get("/statuses/", response_model=List[dict])
+@router.get("/statuses/", response_model=list[dict])
 async def get_inquiry_statuses():
     """문의 상태 목록 조회 (InquiryStatus enum 기준)"""
     return [

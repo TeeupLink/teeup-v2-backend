@@ -11,13 +11,14 @@ App Store Guideline 1.2 — "A method for filtering objectionable material from 
 
 import re
 import unicodedata
-from typing import Any, Iterable, List
+from typing import Any
+from collections.abc import Iterable
 
 from fastapi import HTTPException, Request, status
 
 # 금칙어 목록. 단순 부분 문자열 매칭이므로 오탐 가능성이 큰 단어("보지", "자지", "마약" 등)는 넣지 않는다.
 # 운영 중 필요하면 여기에 추가한다 (재시작 필요).
-BANNED_WORDS: List[str] = [
+BANNED_WORDS: list[str] = [
     # 욕설·비하
     "씨발", "시발", "씨팔", "씨1발", "ㅅㅂ", "ㅆㅂ", "개새끼", "개새기", "개색", "개쌔끼",
     "병신", "븅신", "ㅂㅅ", "좆", "존나", "졸라", "지랄", "ㅈㄹ", "미친놈", "미친년",
@@ -46,7 +47,7 @@ def _normalize(text: str) -> str:
 _NORMALIZED_BANNED = [(w, _normalize(w)) for w in BANNED_WORDS]
 
 
-def find_banned_words(text: str) -> List[str]:
+def find_banned_words(text: str) -> list[str]:
     """텍스트에 포함된 금칙어 목록을 반환한다 (없으면 빈 리스트)."""
     if not text:
         return []
@@ -71,9 +72,9 @@ def _iter_strings(value: Any) -> Iterable[str]:
             yield from _iter_strings(v)
 
 
-def find_banned_words_in_payload(payload: Any) -> List[str]:
+def find_banned_words_in_payload(payload: Any) -> list[str]:
     """JSON 페이로드(dict/list) 안의 모든 문자열 값에서 금칙어를 찾는다."""
-    found: List[str] = []
+    found: list[str] = []
     for s in _iter_strings(payload):
         for w in find_banned_words(s):
             if w not in found:

@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime, timedelta
 import logging
 
@@ -30,7 +30,7 @@ def calculate_next_billing_date(billing_cycle: str, current_date: datetime = Non
     else:
         return current_date + timedelta(days=30)
 
-@router.get("/", response_model=List[SubscriptionResponse])
+@router.get("/", response_model=list[SubscriptionResponse])
 async def get_subscriptions(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)

@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
-from typing import Optional, Union, Literal
+from typing import Optional, Literal
 from datetime import datetime, timedelta, timezone
 from utils.datetime_utils import get_kst_now, get_kst_date
 import hashlib
@@ -30,17 +30,17 @@ APP_CLIENT_TYPES = {"android", "ios"}
 CLIENT_TYPES = {"web", *APP_CLIENT_TYPES}
 
 
-def is_app_client_type(client_type: Optional[str]) -> bool:
+def is_app_client_type(client_type: str | None) -> bool:
     return client_type in APP_CLIENT_TYPES
 
 
-def get_refresh_expire_delta(client_type: Optional[str]) -> timedelta:
+def get_refresh_expire_delta(client_type: str | None) -> timedelta:
     if is_app_client_type(client_type):
         return timedelta(days=settings.JWT_APP_REFRESH_EXPIRE_DAYS)
     return timedelta(days=settings.JWT_WEB_REFRESH_EXPIRE_DAYS)
 
 
-def _auth_cookie_domain() -> Optional[str]:
+def _auth_cookie_domain() -> str | None:
     return settings.AUTH_COOKIE_DOMAIN or None
 
 
@@ -100,7 +100,7 @@ def clear_auth_cookies(response: Response):
     _delete_auth_cookie_variants(response, settings.AUTH_REFRESH_COOKIE_NAME)
 
 
-def _get_access_token(credentials: Optional[HTTPAuthorizationCredentials], request: Request | None) -> str:
+def _get_access_token(credentials: HTTPAuthorizationCredentials | None, request: Request | None) -> str:
     client_type = _get_client_type(request)
 
     if client_type == "web":
@@ -126,7 +126,7 @@ def _get_refresh_token(token_data: Optional["TokenRefreshRequest"], request: Req
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="리프레시 토큰이 필요합니다.")
 
 
-def get_user_role_from_token(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+def get_user_role_from_token(credentials: HTTPAuthorizationCredentials | None = Depends(security),
                              request: Request = None) -> str:
     """JWT 토큰에서 사용자 역할(role) 추출"""
     try:
@@ -142,7 +142,7 @@ def get_user_role_from_token(credentials: Optional[HTTPAuthorizationCredentials]
         return "USER"  # 기본값
 
 
-def is_admin_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+def is_admin_user(credentials: HTTPAuthorizationCredentials | None = Depends(security),
                   request: Request = None) -> bool:
     """현재 사용자가 관리자인지 확인"""
     try:
@@ -236,12 +236,12 @@ def validate_birthdate(birthdate: str) -> dict:
         return result
 
 
-def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+def get_current_user(credentials: HTTPAuthorizationCredentials | None = Depends(security),
                      request: Request = None,
                      db: Session = Depends(get_db),
-                     required_type: Optional[Literal["user", "admin"]] = "user",
+                     required_type: Literal["user", "admin"] | None = "user",
                      check_status: bool = True,
-                     check_terms_agreement: bool = True) -> Union[User, Admin]:
+                     check_terms_agreement: bool = True) -> User | Admin:
     """
     통합 사용자/관리자 인증 함수
     
@@ -337,10 +337,10 @@ def get_current_user(credentials: Optional[HTTPAuthorizationCredentials] = Depen
 
 
 def get_current_user_allow_both(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     request: Request = None,
     db: Session = Depends(get_db),
-) -> Union[User, Admin]:
+) -> User | Admin:
     """User 또는 Admin 토큰 모두 허용 (required_type=None) - 라운딩/정산 등 공통 API용"""
     return get_current_user(credentials=credentials, request=request, db=db, required_type=None, check_status=True)
 
@@ -388,8 +388,8 @@ class PushTokenSyncRequest(BaseModel):
 
 
 class LogoutRequest(BaseModel):
-    push_token: Optional[str] = None
-    refresh_token: Optional[str] = None
+    push_token: str | None = None
+    refresh_token: str | None = None
 
 
 @router.get("/me")
@@ -413,8 +413,8 @@ def _build_login_token_payload(
     role: str,
     user_type: str,
     client_type: str,
-    email: Optional[str] = None,
-    nickname: Optional[str] = None,
+    email: str | None = None,
+    nickname: str | None = None,
 ) -> dict:
     """Google OAuth와 동일하게 client_type을 JWT에 포함 (웹 refresh·쿠키 세션용)."""
     session_policy = "app_persistent" if is_app_client_type(client_type) else "web_default"
@@ -670,7 +670,7 @@ async def withdraw_user(current_user: User = Depends(get_current_active_user), d
 async def logout(
     request: Request,
     response: Response,
-    payload: Optional[LogoutRequest] = Body(default=None),
+    payload: LogoutRequest | None = Body(default=None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -729,17 +729,17 @@ async def sync_push_token(payload: PushTokenSyncRequest,
 
 # 토큰 갱신 스키마
 class TokenRefreshRequest(BaseModel):
-    refresh_token: Optional[str] = None
+    refresh_token: str | None = None
 
 
 class TokenResponse(BaseModel):
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    token_type: Optional[str] = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    token_type: str | None = None
     expires_in: int = 3600  # 1시간
-    refresh_expires_in: Optional[int] = None
-    session_policy: Optional[str] = None
-    client_type: Optional[str] = None
+    refresh_expires_in: int | None = None
+    session_policy: str | None = None
+    client_type: str | None = None
     user: dict
 
 
@@ -747,7 +747,7 @@ class TokenResponse(BaseModel):
 async def refresh_token(
     request: Request,
     response: Response,
-    token_data: Optional[TokenRefreshRequest] = Body(default=None),
+    token_data: TokenRefreshRequest | None = Body(default=None),
     db: Session = Depends(get_db),
 ):
     """토큰 갱신 (자동 로그인용)"""

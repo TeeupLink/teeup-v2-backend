@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 from utils.datetime_utils import get_kst_now
 
@@ -101,7 +101,7 @@ async def create_regulation_category(
             detail="서버 내부 오류가 발생했습니다."
         )
 
-@router.get("/{club_id}/regulations/categories", response_model=List[RegulationCategoryResponse])
+@router.get("/{club_id}/regulations/categories", response_model=list[RegulationCategoryResponse])
 async def get_regulation_categories(
     club_id: str,
     db: Session = Depends(get_db),

@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
-from typing import List, Optional
 import logging
 import secrets
 import string
@@ -30,7 +29,7 @@ router = APIRouter(prefix="/terms", tags=["terms"])
 
 
 # 약관 동의 API용 인증 함수 (약관 동의 체크 제외)
-def get_current_user_for_terms_agreement(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+def get_current_user_for_terms_agreement(credentials: HTTPAuthorizationCredentials | None = Depends(security),
                                          request: Request = None,
                                          db: Session = Depends(get_db)):
     """약관 동의 API용 인증 함수 (약관 동의 체크 제외)"""
@@ -51,8 +50,8 @@ def generate_id(length=20):
 @router.get("/", response_model=TermsListResponse)
 async def get_terms(page: int = Query(1, ge=1, description="페이지 번호"),
                     size: int = Query(20, ge=1, le=100, description="페이지 크기"),
-                    type_filter: Optional[str] = Query(None, description="약관 타입 필터"),
-                    is_active: Optional[bool] = Query(None, description="활성화 여부 필터"),
+                    type_filter: str | None = Query(None, description="약관 타입 필터"),
+                    is_active: bool | None = Query(None, description="활성화 여부 필터"),
                     db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_user)):
     """약관 목록 조회"""
@@ -241,7 +240,7 @@ async def update_terms(terms_id: int,
         raise HTTPException(status_code=500, detail="약관 수정 중 오류가 발생했습니다")
 
 
-@router.get("/types/", response_model=List[dict])
+@router.get("/types/", response_model=list[dict])
 async def get_terms_types(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """약관 타입 목록 조회"""
     try:
@@ -271,8 +270,8 @@ async def get_terms_types(db: Session = Depends(get_db), current_user: User = De
         raise HTTPException(status_code=500, detail="약관 타입 목록 조회 중 오류가 발생했습니다")
 
 
-@router.get("/active/", response_model=List[TermsResponse])
-async def get_active_terms(type_filter: Optional[str] = Query(None, description="약관 타입 필터"),
+@router.get("/active/", response_model=list[TermsResponse])
+async def get_active_terms(type_filter: str | None = Query(None, description="약관 타입 필터"),
                            db: Session = Depends(get_db)):
     """활성화된 약관 목록 조회 (공개 API)"""
     try:
@@ -335,7 +334,7 @@ async def get_active_terms(type_filter: Optional[str] = Query(None, description=
         raise HTTPException(status_code=500, detail="활성화된 약관 목록 조회 중 오류가 발생했습니다")
 
 
-@router.get("/agreements/", response_model=List[TermsAgreementResponse])
+@router.get("/agreements/", response_model=list[TermsAgreementResponse])
 async def get_user_terms_agreements(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """사용자의 약관 동의 내역 조회"""
     try:

@@ -8,15 +8,14 @@
 * 나머지가 있을 때만 10원 단위 배분 적용
 """
 from decimal import Decimal
-from typing import List, Optional
 
 
 def split_amount_10won(
     total_amount: Decimal,
     count: int,
     unit: int = 10,
-    extra_recipient_indices: Optional[List[int]] = None,
-) -> List[Decimal]:
+    extra_recipient_indices: list[int] | None = None,
+) -> list[Decimal]:
     """
     10원 단위 나머지 배분법으로 금액을 count명에게 분할합니다.
 
@@ -60,7 +59,7 @@ def split_amount_10won(
     else:
         extra_indices_set = set(range(extra_count))
 
-    amounts: List[Decimal] = []
+    amounts: list[Decimal] = []
     for i in range(count):
         amt = base + (unit if i in extra_indices_set else 0)
         amounts.append(Decimal(str(amt)))
@@ -70,8 +69,8 @@ def split_amount_10won(
 def allocate_by_total(
     item_amount: Decimal,
     total_cost: Decimal,
-    total_per_person: List[Decimal],
-) -> List[Decimal]:
+    total_per_person: list[Decimal],
+) -> list[Decimal]:
     """
     총액 기준 1인당 금액에 따라 항목 금액을 비례 배분합니다.
     총액이 나누어떨어질 때 전원 동일 부담금을 보장합니다.
@@ -89,7 +88,7 @@ def allocate_by_total(
     n = len(total_per_person)
     if n == 0:
         return []
-    result: List[Decimal] = []
+    result: list[Decimal] = []
     quantize = Decimal('0.01')
     for j in range(n - 1):
         share = (item_amount * total_per_person[j] / total_cost).quantize(quantize)
@@ -100,10 +99,10 @@ def allocate_by_total(
 
 
 def allocate_items_to_exact_totals(
-    total_per_person: List[Decimal],
-    item_amounts: List[Decimal],
+    total_per_person: list[Decimal],
+    item_amounts: list[Decimal],
     total_cost: Decimal,
-) -> List[List[Decimal]]:
+) -> list[list[Decimal]]:
     """
     항목별 금액을 배분하되, 각 참가자의 합계가 total_per_person과 정확히 일치하도록 함.
     10원 단위 total_per_person이 그대로 반영됩니다.
@@ -119,7 +118,7 @@ def allocate_items_to_exact_totals(
     if not total_per_person or not item_amounts or total_cost <= 0:
         return []
     n = len(total_per_person)
-    result: List[List[Decimal]] = []
+    result: list[list[Decimal]] = []
     accumulated = [Decimal('0')] * n
     for i, amt in enumerate(item_amounts[:-1]):
         shares = allocate_by_total(amt, total_cost, total_per_person)

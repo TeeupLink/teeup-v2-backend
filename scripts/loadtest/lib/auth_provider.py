@@ -5,7 +5,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from threading import Lock
-from typing import Optional
 
 from .state_store import UserRuntimeState
 
@@ -19,7 +18,7 @@ class AuthProvider:
         self.run_id = run_id
 
     @staticmethod
-    def _headers(token: Optional[str] = None) -> dict:
+    def _headers(token: str | None = None) -> dict:
         headers = {"Content-Type": "application/json"}
         if token:
             headers["Authorization"] = f"Bearer {token}"

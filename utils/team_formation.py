@@ -6,7 +6,7 @@
 """
 import math
 import random
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Any
 from decimal import Decimal
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -29,7 +29,7 @@ class TeamFormationEngine:
     def __init__(self, db: Session):
         self.db = db
 
-    def classify_by_handicap(self, participants: List[MeetingParticipant]) -> Dict[str, List[MeetingParticipant]]:
+    def classify_by_handicap(self, participants: list[MeetingParticipant]) -> dict[str, list[MeetingParticipant]]:
         """핸디캡 기준으로 참가자를 버킷화"""
         buckets = {
             'A': [],  # ≤9 (상급)
@@ -52,7 +52,7 @@ class TeamFormationEngine:
         return buckets
 
     def calculate_team_score(self,
-                             team_members: List[MeetingParticipant],
+                             team_members: list[MeetingParticipant],
                              formation_mode: TeamFormationMode,
                              preferences_weight: float = 0.3) -> float:
         """팀 편성 점수 계산"""
@@ -287,7 +287,7 @@ class TeamFormationEngine:
     #     return teams
 
     def create_teams_from_formation(self, meeting_id: int, formation_request: TeamFormationRequest,
-                                    participants: List[MeetingParticipant]) -> List[Team]:
+                                    participants: list[MeetingParticipant]) -> list[Team]:
         """
         편성 요청에 따라 팀 생성 (새로운 2단계 선택 방식)
         
@@ -390,7 +390,7 @@ class TeamFormationEngine:
         self.db.commit()
         return teams
 
-    def get_formation_summary(self, teams: List[Team]) -> Dict[str, Any]:
+    def get_formation_summary(self, teams: list[Team]) -> dict[str, Any]:
         """편성 요약 정보 생성"""
         if not teams:
             return {}
@@ -428,7 +428,7 @@ class TeamFormationEngine:
 # =============================================================================
 
 
-def calculate_team_distribution(total_participants: int, max_team_size: int = 4) -> Dict[str, Any]:
+def calculate_team_distribution(total_participants: int, max_team_size: int = 4) -> dict[str, Any]:
     """
     4인조/3인조 처리 로직
     
@@ -508,9 +508,9 @@ def calculate_team_distribution(total_participants: int, max_team_size: int = 4)
     }
 
 
-def zigzag_distribute(participants: List[MeetingParticipant],
+def zigzag_distribute(participants: list[MeetingParticipant],
                       team_count: int,
-                      max_team_size: int = 4) -> List[List[MeetingParticipant]]:
+                      max_team_size: int = 4) -> list[list[MeetingParticipant]]:
     """
     지그재그(Zigzag/Snake Draft) 분배 함수
     
@@ -583,7 +583,7 @@ def zigzag_distribute(participants: List[MeetingParticipant],
     return teams
 
 
-def sort_by_handicap(participants: List[MeetingParticipant], db: Session) -> List[MeetingParticipant]:
+def sort_by_handicap(participants: list[MeetingParticipant], db: Session) -> list[MeetingParticipant]:
     """
     핸디캡 기준 정렬 함수
     
@@ -628,7 +628,7 @@ def sort_by_handicap(participants: List[MeetingParticipant], db: Session) -> Lis
     return sorted_participants
 
 
-def sort_by_previous_record(participants: List[MeetingParticipant], db: Session) -> List[MeetingParticipant]:
+def sort_by_previous_record(participants: list[MeetingParticipant], db: Session) -> list[MeetingParticipant]:
     """
     Net Score 기준 정렬 함수 (직전 대회 성적 기준)
     
@@ -644,7 +644,7 @@ def sort_by_previous_record(participants: List[MeetingParticipant], db: Session)
         Net Score 순으로 정렬된 참가자 리스트 (성적 좋은 순)
     """
 
-    def get_net_score_value(participant: MeetingParticipant) -> Tuple[bool, float]:
+    def get_net_score_value(participant: MeetingParticipant) -> tuple[bool, float]:
         """참가자의 Net Score 값을 반환 (기록 여부, Net Score)"""
         # 게스트는 기록이 없으므로 마지막에 배치
         if _is_guest_participant(participant):
@@ -669,7 +669,7 @@ def sort_by_previous_record(participants: List[MeetingParticipant], db: Session)
     return sorted_participants
 
 
-def separate_by_gender(participants: List[MeetingParticipant], db: Session) -> Dict[str, List[MeetingParticipant]]:
+def separate_by_gender(participants: list[MeetingParticipant], db: Session) -> dict[str, list[MeetingParticipant]]:
     """
     성별 분리 함수
     
@@ -738,10 +738,10 @@ def separate_by_gender(participants: List[MeetingParticipant], db: Session) -> D
 # =============================================================================
 
 
-def form_teams_by_mode(participants: List[MeetingParticipant],
+def form_teams_by_mode(participants: list[MeetingParticipant],
                        formation_mode: TeamFormationMode,
                        db: Session,
-                       max_team_size: int = 4) -> List[List[MeetingParticipant]]:
+                       max_team_size: int = 4) -> list[list[MeetingParticipant]]:
     """
     주 편성 함수 - 6가지 모드별로 분기 처리
     
@@ -803,10 +803,10 @@ def form_teams_by_mode(participants: List[MeetingParticipant],
     return all_teams
 
 
-def _form_teams_by_criteria(participants: List[MeetingParticipant],
+def _form_teams_by_criteria(participants: list[MeetingParticipant],
                             formation_mode: TeamFormationMode,
                             db: Session,
-                            max_team_size: int = 4) -> List[List[MeetingParticipant]]:
+                            max_team_size: int = 4) -> list[list[MeetingParticipant]]:
     """
     편성 기준에 따라 팀 편성 (내부 헬퍼 함수)
     
@@ -849,7 +849,7 @@ def _form_teams_by_criteria(participants: List[MeetingParticipant],
     return teams
 
 
-def form_random_teams(participants: List[MeetingParticipant], max_team_size: int = 4) -> List[List[MeetingParticipant]]:
+def form_random_teams(participants: list[MeetingParticipant], max_team_size: int = 4) -> list[list[MeetingParticipant]]:
     """
     랜덤 편성 함수
     
@@ -935,10 +935,10 @@ def calculate_guest_handicap(average_score: int) -> Decimal:
 
 def add_guest_to_meeting(meeting_id: int,
                          guest_name: str,
-                         guest_handicap: Optional[Decimal] = None,
-                         average_score: Optional[int] = None,
-                         guest_birthdate: Optional[str] = None,
-                         guest_gender: Optional[Gender] = None,
+                         guest_handicap: Decimal | None = None,
+                         average_score: int | None = None,
+                         guest_birthdate: str | None = None,
+                         guest_gender: Gender | None = None,
                          db: Session = None,
                          *,
                          auto_commit: bool = True) -> MeetingParticipant:
@@ -1031,7 +1031,7 @@ def add_guest_to_meeting(meeting_id: int,
     return guest_participant
 
 
-def integrate_guests_and_members(participants: List[MeetingParticipant]) -> List[MeetingParticipant]:
+def integrate_guests_and_members(participants: list[MeetingParticipant]) -> list[MeetingParticipant]:
     """
     게스트와 멤버 통합 함수
     

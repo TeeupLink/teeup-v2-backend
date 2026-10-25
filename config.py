@@ -1,5 +1,4 @@
 import os
-from typing import Optional, List
 from pydantic_settings import BaseSettings
 
 
@@ -36,7 +35,7 @@ class Settings(BaseSettings):
     # 프록시가 X-Forwarded-Proto 를 아예 안 보내는 경우까지 막는다.
     # 같은 호스트로 가는 Location 이 http:// 이면 https:// 로 올린다.
     # None 이면 development 가 아닐 때만 켠다.
-    FORCE_HTTPS_LOCATION: Optional[bool] = None
+    FORCE_HTTPS_LOCATION: bool | None = None
 
     # Server Configuration
     BACKEND_PORT: str = ""  # 백엔드 서버 포트 (환경 변수 필수)
@@ -45,7 +44,7 @@ class Settings(BaseSettings):
     PORT: str = ""
 
     # Database Auto Creation
-    AUTO_CREATE_TABLES: Optional[bool] = (
+    AUTO_CREATE_TABLES: bool | None = (
         None  # None이면 개발 환경에서만 자동 생성, True/False로 명시적 제어 가능
     )
 
@@ -57,10 +56,10 @@ class Settings(BaseSettings):
     AUTH_REFRESH_COOKIE_NAME: str = "teeup_refresh_token"
     AUTH_COOKIE_DOMAIN: str = ""
     AUTH_COOKIE_SAMESITE: str = "lax"
-    AUTH_COOKIE_SECURE: Optional[bool] = None
+    AUTH_COOKIE_SECURE: bool | None = None
 
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         """Convert CORS origins string to list"""
         if not self.CORS_ORIGINS:
             return []
@@ -80,7 +79,7 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT.lower() != "development"
 
     @property
-    def loadtest_auth_mock_allowed_ips_list(self) -> List[str]:
+    def loadtest_auth_mock_allowed_ips_list(self) -> list[str]:
         """Convert loadtest oauth mock allowed IPs to list"""
         if not self.LOADTEST_AUTH_MOCK_ALLOWED_IPS:
             return []

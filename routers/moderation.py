@@ -1,6 +1,5 @@
 # 신고 / 차단 라우터 (App Store Guideline 1.2 — 사용자 생성 콘텐츠 관리)
 import logging
-from typing import Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/moderation", tags=["moderation"])
 
 # 신고 대상 종류별 존재 확인용 모델 매핑
-_TARGET_MODEL: Dict[ReportTargetType, type] = {
+_TARGET_MODEL: dict[ReportTargetType, type] = {
     ReportTargetType.CLUB: Club,
     ReportTargetType.MEETING: Meeting,
     ReportTargetType.CLUB_NOTICE: ClubNotice,

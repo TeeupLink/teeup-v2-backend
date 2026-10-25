@@ -6,7 +6,7 @@ import secrets
 import logging
 import json
 from urllib.parse import urlencode
-from typing import Dict, Any, cast
+from typing import Any, cast
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, status, Depends, Query, Request, Response
 from fastapi.responses import RedirectResponse, HTMLResponse
@@ -392,7 +392,7 @@ async def google_oauth_callback_post(request: GoogleOAuthBody, http_request: Req
         )
 
 
-def _build_user_payload(user: User) -> Dict[str, Any]:
+def _build_user_payload(user: User) -> dict[str, Any]:
     """로그인 응답의 user 블록 생성"""
     return {
         "id": user.id,

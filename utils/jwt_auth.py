@@ -4,7 +4,7 @@ JWT 토큰 인증 유틸리티
 import jwt
 from datetime import datetime, timedelta, timezone
 from utils.datetime_utils import get_kst_now
-from typing import Optional, Dict, Any
+from typing import Any
 from fastapi import HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 ACCOUNT_TYPES = frozenset({"user", "admin"})
 
 
-def resolve_account_type(payload: Dict[str, Any]) -> str:
+def resolve_account_type(payload: dict[str, Any]) -> str:
     """JWT payload에서 계정 종류(user/admin) 추출. type 클레임은 access/refresh 용도."""
     account_type = payload.get("account_type")
     if account_type in ACCOUNT_TYPES:
@@ -32,7 +32,7 @@ def resolve_account_type(payload: Dict[str, Any]) -> str:
     return "user"
 
 
-def _prepare_token_payload(data: Dict[str, Any]) -> tuple[Dict[str, Any], Optional[str]]:
+def _prepare_token_payload(data: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
     """
     입력 data의 type(user/admin)을 account_type으로 분리.
     password_reset·admin_temp 등 특수 type은 그대로 반환.
@@ -53,7 +53,7 @@ class JWTAuth:
         self.algorithm = settings.JWT_ALGORITHM
         self.expire_minutes = settings.JWT_EXPIRE_MINUTES
     
-    def create_access_token(self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+    def create_access_token(self, data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
         """액세스 토큰 생성"""
         try:
             to_encode, special_type = _prepare_token_payload(data)
@@ -85,7 +85,7 @@ class JWTAuth:
                 detail="토큰 생성에 실패했습니다"
             )
     
-    def create_refresh_token(self, data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:
+    def create_refresh_token(self, data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
         """리프레시 토큰 생성"""
         try:
             import secrets
@@ -116,7 +116,7 @@ class JWTAuth:
                 detail="리프레시 토큰 생성에 실패했습니다"
             )
     
-    def verify_token(self, token: str, token_type: str = "access", db: Optional[Session] = None) -> Dict[str, Any]:
+    def verify_token(self, token: str, token_type: str = "access", db: Session | None = None) -> dict[str, Any]:
         """토큰 검증"""
         try:
             # 토큰 형식 검증 (JWT는 3개 부분으로 나뉘어야 함)
@@ -191,7 +191,7 @@ class JWTAuth:
                 detail="토큰 검증에 실패했습니다"
             )
     
-    def decode_token(self, token: str) -> Dict[str, Any]:
+    def decode_token(self, token: str) -> dict[str, Any]:
         """토큰 디코딩 (검증 없이)"""
         try:
             payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm], options={"verify_exp": False})

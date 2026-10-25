@@ -4,7 +4,6 @@
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from typing import List, Optional
 import logging
 from database import get_db
 from models import MeetingParticipant, User, Meeting, Guest, ClubMembership
@@ -18,7 +17,7 @@ router = APIRouter(prefix="/meetings", tags=["모임 참가자 관리"])
 logger = logging.getLogger(__name__)
 
 
-def _normalize_birthdate(val: Optional[str]) -> Optional[str]:
+def _normalize_birthdate(val: str | None) -> str | None:
     """생년월일을 YYYY-MM-DD 형식으로 변환 (19971523 -> 1997-15-23은 잘못됨, 19970115 -> 1997-01-15)"""
     if not val:
         return None
@@ -151,9 +150,9 @@ def add_guest_to_meeting_api(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"게스트 추가 중 오류가 발생했습니다: {str(e)}")
 
 
-@router.get("/", response_model=List[dict])
-def get_meeting_participants(user_id: Optional[int] = Query(None, description="사용자 ID로 필터링"),
-                             meeting_id: Optional[int] = Query(None, description="모임 ID로 필터링"),
+@router.get("/", response_model=list[dict])
+def get_meeting_participants(user_id: int | None = Query(None, description="사용자 ID로 필터링"),
+                             meeting_id: int | None = Query(None, description="모임 ID로 필터링"),
                              db: Session = Depends(get_db),
                              current_user: dict = Depends(get_current_active_user)):
     """모임 참가자 목록 조회"""

@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, case
-from typing import List, Optional
 from datetime import date, datetime, time
 from utils.datetime_utils import get_kst_now
 import logging
@@ -62,10 +61,10 @@ def _meeting_to_response(meeting: Meeting, club: Club, participant_count: int) -
 async def get_socials(
     page: int = Query(1, ge=1, description="페이지 번호"),
     limit: int = Query(10, ge=1, le=100, description="페이지당 항목 수"),
-    status_group: Optional[str] = Query(None, description="상태 그룹(active|completed)"),
-    search: Optional[str] = Query(None, description="검색어"),
-    start_date: Optional[date] = Query(None, description="시작일(YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="종료일(YYYY-MM-DD)"),
+    status_group: str | None = Query(None, description="상태 그룹(active|completed)"),
+    search: str | None = Query(None, description="검색어"),
+    start_date: date | None = Query(None, description="시작일(YYYY-MM-DD)"),
+    end_date: date | None = Query(None, description="종료일(YYYY-MM-DD)"),
     current_user: User = Depends(get_current_user_allow_both),
     db: Session = Depends(get_db)
 ):

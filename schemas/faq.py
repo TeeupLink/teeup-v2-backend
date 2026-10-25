@@ -1,6 +1,5 @@
 # FAQ 관련 스키마
 from pydantic import BaseModel, Field
-from typing import List, Optional
 from datetime import datetime
 # FAQ 관련 스키마
 class FAQCategoryBase(BaseModel):
@@ -12,21 +11,21 @@ class FAQCategoryCreate(FAQCategoryBase):
     pass
 
 class FAQCategoryUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=50)
-    order: Optional[int] = None
-    is_active: Optional[bool] = None
+    title: str | None = Field(None, min_length=1, max_length=50)
+    order: int | None = None
+    is_active: bool | None = None
 
 class FAQCategoryResponse(FAQCategoryBase):
     id: int
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 class FAQBase(BaseModel):
     question: str = Field(..., min_length=1, max_length=300, description="질문")
     answer: str = Field(..., description="답변")
-    category_id: Optional[int] = Field(None, description="카테고리 ID")
+    category_id: int | None = Field(None, description="카테고리 ID")
     order: int = Field(default=0, description="정렬 순서")
     is_active: bool = Field(default=True, description="활성 상태")
 
@@ -36,30 +35,30 @@ class FAQCreate(FAQBase):
 
 class FAQUpdate(BaseModel):
     """FAQ 수정 스키마"""
-    question: Optional[str] = Field(None, min_length=1, max_length=300, description="질문")
-    answer: Optional[str] = Field(None, description="답변")
-    category_id: Optional[int] = Field(None, description="카테고리 ID")
-    order: Optional[int] = Field(None, description="정렬 순서")
-    is_active: Optional[bool] = Field(None, description="활성 상태")
+    question: str | None = Field(None, min_length=1, max_length=300, description="질문")
+    answer: str | None = Field(None, description="답변")
+    category_id: int | None = Field(None, description="카테고리 ID")
+    order: int | None = Field(None, description="정렬 순서")
+    is_active: bool | None = Field(None, description="활성 상태")
 
 class FAQResponse(BaseModel):
     id: int
     question: str
     answer: str
-    category_id: Optional[int] = None
-    category_title: Optional[str] = None
+    category_id: int | None = None
+    category_title: str | None = None
     order: int
     is_active: bool
     is_deleted: bool
     view_count: int
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    deleted_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    deleted_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
 class FAQPageResponse(BaseModel):
-    items: List[FAQResponse]
+    items: list[FAQResponse]
     total: int
     page: int
     limit: int

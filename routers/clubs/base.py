@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
-from typing import List, Optional
 from datetime import datetime
 import logging
 
@@ -25,9 +24,9 @@ async def get_club_meetings_legacy(
     club_id: str,
     page: int = 1,
     limit: int = 10,
-    status_filter: Optional[MeetingStatus] = None,
-    meeting_type_filter: Optional[MeetingType] = None,
-    search: Optional[str] = None,
+    status_filter: MeetingStatus | None = None,
+    meeting_type_filter: MeetingType | None = None,
+    search: str | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
@@ -148,9 +147,9 @@ async def create_club(club_data: ClubCreate,
 @router.get("/", response_model=dict)
 async def get_clubs(page: int = 1,
                     limit: int = 10,
-                    status_filter: Optional[ClubStatus] = None,
-                    sido_code: Optional[str] = Query(None, description="시도 코드"),
-                    gungu_codes: Optional[List[str]] = Query(None, description="군구 코드 목록"),
+                    status_filter: ClubStatus | None = None,
+                    sido_code: str | None = Query(None, description="시도 코드"),
+                    gungu_codes: list[str] | None = Query(None, description="군구 코드 목록"),
                     db: Session = Depends(get_db),
                     current_user: User = Depends(get_current_active_user)):
     """클럽 목록 조회"""
@@ -261,7 +260,7 @@ async def get_clubs(page: int = 1,
 @router.get("/my", response_model=dict)
 async def get_my_clubs(page: int = 1,
                        limit: int = 10,
-                       status_filter: Optional[str] = None,
+                       status_filter: str | None = None,
                        db: Session = Depends(get_db),
                        current_user: User = Depends(get_current_active_user)):
     """내 클럽 목록 조회"""

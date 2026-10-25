@@ -4,7 +4,6 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import Optional
 import logging
 
 from database import get_db
@@ -24,10 +23,10 @@ router = APIRouter(tags=["admin-users"])
 async def get_admin_users(
         page: int = 1,
         limit: int = 10,
-        search: Optional[str] = None,
-        role_filter: Optional[str] = None,
-        status_filter: Optional[str] = None,
-        sort_order: Optional[str] = "oldest",
+        search: str | None = None,
+        role_filter: str | None = None,
+        status_filter: str | None = None,
+        sort_order: str | None = "oldest",
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
@@ -109,7 +108,7 @@ async def get_admin_users(
 
 @router.get("/users/search")
 async def search_users_for_club(
-        q: Optional[str] = None,
+        q: str | None = None,
         limit: int = 20,
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),

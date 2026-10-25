@@ -2,7 +2,6 @@
 Rate Limiting 미들웨어
 """
 import time
-from typing import Dict, Tuple
 from fastapi import Request, HTTPException, status
 from starlette.middleware.base import BaseHTTPMiddleware
 import logging
@@ -16,7 +15,7 @@ class RateLimiterMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.requests_per_minute = requests_per_minute
         self.requests_per_hour = requests_per_hour
-        self.requests: Dict[str, list] = {}
+        self.requests: dict[str, list] = {}
         self.cleanup_interval = 300  # 5분마다 정리
     
     async def dispatch(self, request: Request, call_next):
@@ -131,7 +130,7 @@ class APIRateLimiter:
     }
     
     @classmethod
-    def get_rate_limit(cls, path: str) -> Tuple[int, int]:
+    def get_rate_limit(cls, path: str) -> tuple[int, int]:
         """경로별 Rate Limit 반환"""
         for api_path, limits in cls.RATE_LIMITS.items():
             if path.startswith(api_path):

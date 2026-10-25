@@ -5,7 +5,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 import logging
 
@@ -46,8 +46,8 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 # 핸디캡 관련 스키마
 class HandicapUpdate(BaseModel):
-    average_score: Optional[int] = Field(None, ge=55, le=144, description="평균 타수 (자동 계산용)")
-    initial_handicap: Optional[float] = Field(None, ge=0, le=72, description="초기 핸디캡 (직접 입력, 하위 호환성)")
+    average_score: int | None = Field(None, ge=55, le=144, description="평균 타수 (자동 계산용)")
+    initial_handicap: float | None = Field(None, ge=0, le=72, description="초기 핸디캡 (직접 입력, 하위 호환성)")
 
     @validator("*", pre=True, always=True)
     def check_at_least_one(cls, v, values):
@@ -60,12 +60,12 @@ class HandicapUpdate(BaseModel):
 class HandicapResponse(BaseModel):
     user_id: int
     nickname: str
-    handicap: Optional[float]  # 하위 호환성 (기존 필드)
-    average_score: Optional[int]
-    initial_handicap: Optional[float]  # 가입 시 수동 입력한 핸디캡
-    calculated_handicap: Optional[float]  # 자동 계산된 핸디캡 (최근 N경기 평균 기반)
-    handicap_update_method: Optional[str]  # MANUAL 또는 AUTO
-    handicap_calculation_count: Optional[int]  # 핸디캡 계산에 사용된 경기 수
+    handicap: float | None  # 하위 호환성 (기존 필드)
+    average_score: int | None
+    initial_handicap: float | None  # 가입 시 수동 입력한 핸디캡
+    calculated_handicap: float | None  # 자동 계산된 핸디캡 (최근 N경기 평균 기반)
+    handicap_update_method: str | None  # MANUAL 또는 AUTO
+    handicap_calculation_count: int | None  # 핸디캡 계산에 사용된 경기 수
     is_auto_calculated: (
         bool  # 자동 계산 여부 (deprecated, calculated_handicap이 있으면 True)
     )
@@ -545,7 +545,7 @@ async def get_my_profile(db: Session = Depends(get_db), current_user: User = Dep
         )
 
 
-@router.get("/my-clubs", response_model=List[dict])
+@router.get("/my-clubs", response_model=list[dict])
 async def get_my_clubs(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     """내 클럽 목록 조회"""
     try:
@@ -594,10 +594,10 @@ async def get_my_clubs(db: Session = Depends(get_db), current_user: User = Depen
 async def get_my_meetings(
         page: int = 1,
         limit: int = 10,
-        status_filter: Optional[str] = None,
-        meeting_type_filter: Optional[str] = None,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        status_filter: str | None = None,
+        meeting_type_filter: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user),
 ):
@@ -741,12 +741,12 @@ async def delete_my_account(db: Session = Depends(get_db), current_user: User = 
         )
 
 
-@router.get("/notifications", response_model=List[NotificationResponse])
+@router.get("/notifications", response_model=list[NotificationResponse])
 async def get_my_notifications(
         page: int = 1,
         limit: int = 20,
-        status_filter: Optional[str] = None,
-        type_filter: Optional[str] = None,
+        status_filter: str | None = None,
+        type_filter: str | None = None,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user),
 ):
@@ -1049,11 +1049,11 @@ async def update_notification_settings(
         )
 
 
-@router.get("/payments", response_model=List[PaymentResponse])
+@router.get("/payments", response_model=list[PaymentResponse])
 async def get_my_payments(
         page: int = 1,
         limit: int = 20,
-        status_filter: Optional[str] = None,
+        status_filter: str | None = None,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user),
 ):
@@ -1109,7 +1109,7 @@ async def get_my_payments(
         )
 
 
-@router.get("/subscriptions", response_model=List[SubscriptionResponse])
+@router.get("/subscriptions", response_model=list[SubscriptionResponse])
 async def get_my_subscriptions(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     """내 구독/요금제 이용내역 조회"""
     try:
@@ -1150,7 +1150,7 @@ async def get_my_subscriptions(db: Session = Depends(get_db), current_user: User
         )
 
 
-@router.get("/payment-methods", response_model=List[dict])
+@router.get("/payment-methods", response_model=list[dict])
 async def get_my_payment_methods(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     """내 결제 수단 목록 조회"""
     try:
@@ -1478,15 +1478,15 @@ async def calculate_handicap(
 class ScoreHistoryResponse(BaseModel):
     id: int
     meeting_id: int
-    meeting_name: Optional[str] = None
+    meeting_name: str | None = None
     gross_score: int
-    net_score: Optional[float] = None
+    net_score: float | None = None
     handicap_used: float
     played_at: datetime
     created_at: datetime
 
 
-@router.get("/{user_id}/score-history", response_model=List[ScoreHistoryResponse])
+@router.get("/{user_id}/score-history", response_model=list[ScoreHistoryResponse])
 async def get_user_score_history(
         user_id: int,
         limit: int = 10,
@@ -1572,17 +1572,17 @@ async def get_user_score_history(
 class MeetingResultResponse(BaseModel):
     id: int
     meeting_id: int
-    meeting_name: Optional[str] = None
+    meeting_name: str | None = None
     user_id: int
     gross_score: int
     net_score: float
-    rank: Optional[int] = None
+    rank: int | None = None
     handicap_used: float
     completed_at: datetime
     created_at: datetime
 
 
-@router.get("/{user_id}/last-meeting-result", response_model=Optional[MeetingResultResponse])
+@router.get("/{user_id}/last-meeting-result", response_model=MeetingResultResponse | None)
 async def get_last_meeting_result(
         user_id: int,
         db: Session = Depends(get_db),
@@ -1677,14 +1677,14 @@ class RoundingMeetingItem(BaseModel):
     rounding_completed_at: datetime
     has_score: bool
     has_hole_scores: bool
-    gross_score: Optional[int] = None
-    net_score: Optional[float] = None
-    handicap_used: Optional[float] = None  # 해당 경기 넷 계산에 쓴 핸디캡 (경기 전 기준)
-    handicap_after_round: Optional[float] = None  # 이 경기 반영 후 자동 재계산 핸디캡 (기록 표시 권장)
+    gross_score: int | None = None
+    net_score: float | None = None
+    handicap_used: float | None = None  # 해당 경기 넷 계산에 쓴 핸디캡 (경기 전 기준)
+    handicap_after_round: float | None = None  # 이 경기 반영 후 자동 재계산 핸디캡 (기록 표시 권장)
 
 
 class RoundingMeetingsResponse(BaseModel):
-    data: List[RoundingMeetingItem]
+    data: list[RoundingMeetingItem]
     total: int
     page: int
     limit: int
@@ -1697,9 +1697,9 @@ class ScheduleMeetingItem(BaseModel):
 
     id: int
     name: str
-    description: Optional[str] = None
-    location: Optional[str] = None
-    meeting_time: Optional[datetime] = None
+    description: str | None = None
+    location: str | None = None
+    meeting_time: datetime | None = None
     meeting_type: str
     status: str
     club_id: int
@@ -1710,21 +1710,21 @@ class DateScheduleItem(BaseModel):
     """날짜별 일정 아이템"""
 
     date: str  # YYYY-MM-DD 형식
-    meetings: List[ScheduleMeetingItem]
+    meetings: list[ScheduleMeetingItem]
 
 
 class UserScheduleResponse(BaseModel):
     """유저 일정표 응답"""
 
     total_meetings: int
-    date_range: Optional[dict] = None  # {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}
-    schedules: List[DateScheduleItem]
+    date_range: dict | None = None  # {"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}
+    schedules: list[DateScheduleItem]
 
 
 @router.get("/me/schedule", response_model=UserScheduleResponse)
 async def get_my_schedule(
-        start_date: Optional[str] = None,  # YYYY-MM-DD 형식
-        end_date: Optional[str] = None,  # YYYY-MM-DD 형식
+        start_date: str | None = None,  # YYYY-MM-DD 형식
+        end_date: str | None = None,  # YYYY-MM-DD 형식
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_active_user),
 ):
@@ -1823,17 +1823,17 @@ async def get_my_schedule(
 
 class RoundingStatsResponse(BaseModel):
     total_games: int
-    average_score: Optional[float] = None
-    recent_5_avg: Optional[float] = None
-    best_score: Optional[int] = None
-    worst_score: Optional[int] = None
-    current_handicap: Optional[float] = None
-    initial_handicap: Optional[float] = None
+    average_score: float | None = None
+    recent_5_avg: float | None = None
+    best_score: int | None = None
+    worst_score: int | None = None
+    current_handicap: float | None = None
+    initial_handicap: float | None = None
 
 
 @router.get("/me/rounding-meetings", response_model=RoundingMeetingsResponse)
 async def get_my_rounding_meetings(
-        score_status: Optional[str] = None,  # all, missing, completed
+        score_status: str | None = None,  # all, missing, completed
         page: int = 1,
         limit: int = 10,
         db: Session = Depends(get_db),

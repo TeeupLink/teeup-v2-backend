@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-from typing import Optional
 import requests
 import os
 from datetime import datetime, timedelta
@@ -44,25 +43,25 @@ class PaymentResponse(BaseModel):
     orderName: str
     status: str
     requestedAt: str
-    approvedAt: Optional[str] = None
+    approvedAt: str | None = None
     totalAmount: int
     method: str
-    card: Optional[dict] = None
-    virtualAccount: Optional[dict] = None
-    transfer: Optional[dict] = None
-    mobilePhone: Optional[dict] = None
-    giftCertificate: Optional[dict] = None
-    cashReceipt: Optional[dict] = None
-    discount: Optional[dict] = None
-    cancels: Optional[list] = None
-    secret: Optional[str] = None
+    card: dict | None = None
+    virtualAccount: dict | None = None
+    transfer: dict | None = None
+    mobilePhone: dict | None = None
+    giftCertificate: dict | None = None
+    cashReceipt: dict | None = None
+    discount: dict | None = None
+    cancels: list | None = None
+    secret: str | None = None
     type: str
-    easyPay: Optional[dict] = None
+    easyPay: dict | None = None
     country: str
-    failure: Optional[dict] = None
+    failure: dict | None = None
     isPartialCancelable: bool
-    receipt: Optional[dict] = None
-    checkoutUrl: Optional[str] = None
+    receipt: dict | None = None
+    checkoutUrl: str | None = None
     currency: str
     balanceAmount: int
     suppliedAmount: int
@@ -392,10 +391,10 @@ async def cancel_payment(
 
 @router.get("/")
 async def get_payment_list(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    status_filter: Optional[str] = None,
-    payment_method_filter: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    status_filter: str | None = None,
+    payment_method_filter: str | None = None,
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
@@ -551,8 +550,8 @@ async def get_payment_list(
 
 @router.get("/statistics")
 async def get_payment_statistics(
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)
 ):

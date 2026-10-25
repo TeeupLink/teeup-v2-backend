@@ -1,6 +1,5 @@
 # 신고 / 차단 스키마
 from datetime import datetime
-from typing import Optional, List
 from pydantic import BaseModel, Field
 from .enums import ReportTargetType, ReportReason, ReportStatus
 
@@ -9,7 +8,7 @@ class ContentReportCreate(BaseModel):
     target_type: ReportTargetType
     target_id: int = Field(..., ge=1)
     reason: ReportReason
-    description: Optional[str] = Field(None, max_length=2000)
+    description: str | None = Field(None, max_length=2000)
 
 
 class ContentReportResponse(BaseModel):
@@ -18,9 +17,9 @@ class ContentReportResponse(BaseModel):
     target_type: ReportTargetType
     target_id: int
     reason: ReportReason
-    description: Optional[str] = None
+    description: str | None = None
     status: ReportStatus
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -28,11 +27,11 @@ class ContentReportResponse(BaseModel):
 
 class BlockedUserItem(BaseModel):
     user_id: int
-    nickname: Optional[str] = None
-    profile_image: Optional[str] = None
-    blocked_at: Optional[datetime] = None
+    nickname: str | None = None
+    profile_image: str | None = None
+    blocked_at: datetime | None = None
 
 
 class BlockedUsersResponse(BaseModel):
-    blocked_user_ids: List[int]
-    blocked_users: List[BlockedUserItem]
+    blocked_user_ids: list[int]
+    blocked_users: list[BlockedUserItem]

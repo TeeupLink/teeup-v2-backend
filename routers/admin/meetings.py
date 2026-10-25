@@ -4,10 +4,8 @@
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from pydantic import BaseModel, Field
-from typing import Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract
-from typing import Optional, List
 import logging
 
 from database import get_db
@@ -19,7 +17,7 @@ from utils.notification_service import notify_round_participants_status_changed
 from .deps import get_admin_user
 
 
-def _resolve_extra_payer_index(effective_ids: list, extra_payer_id) -> Optional[int]:
+def _resolve_extra_payer_index(effective_ids: list, extra_payer_id) -> int | None:
     """나머지 10원을 부담할 참가자의 effective_ids 내 인덱스 반환. 없으면 None."""
     if extra_payer_id is None:
         return None
@@ -238,10 +236,10 @@ class MeetingStatsResponse(BaseModel):
     canceled_meetings: int
     completed_meetings: int
     meetings_by_type: dict
-    meetings_by_month: List[dict]
+    meetings_by_month: list[dict]
     total_participants: int
     average_participants_per_meeting: float
-    meetings_by_club: List[dict]
+    meetings_by_club: list[dict]
     upcoming_meetings_count: int
     past_meetings_count: int
 
@@ -250,10 +248,10 @@ class MeetingStatsResponse(BaseModel):
 async def admin_get_meetings(
     page: int = Query(1, ge=1, description="페이지 번호"),
     limit: int = Query(10, ge=1, le=100, description="페이지당 항목 수"),
-    status: Optional[str] = Query(None, description="모임 상태 필터"),
-    search: Optional[str] = Query(None, description="검색어"),
-    club_id: Optional[int] = Query(None, description="클럽 ID 필터"),
-    meeting_type: Optional[str] = Query(None, description="모임 유형: ROUND, SOCIAL"),
+    status: str | None = Query(None, description="모임 상태 필터"),
+    search: str | None = Query(None, description="검색어"),
+    club_id: int | None = Query(None, description="클럽 ID 필터"),
+    meeting_type: str | None = Query(None, description="모임 유형: ROUND, SOCIAL"),
     current_user: dict = Depends(get_admin_user),
     db: Session = Depends(get_db),
 ):
@@ -336,9 +334,9 @@ async def admin_get_meetings(
 @router.get("/meetings/rounding")
 async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="페이지 번호"),
                                       limit: int = Query(10, ge=1, le=100, description="페이지당 항목 수"),
-                                      status: Optional[str] = Query(None, description="모임 상태 필터"),
-                                      search: Optional[str] = Query(None, description="검색어"),
-                                      club_id: Optional[int] = Query(None, description="클럽 ID 필터"),
+                                      status: str | None = Query(None, description="모임 상태 필터"),
+                                      search: str | None = Query(None, description="검색어"),
+                                      club_id: int | None = Query(None, description="클럽 ID 필터"),
                                       current_user: dict = Depends(get_admin_user),
                                       db: Session = Depends(get_db)):
     """관리자용 라운딩 모임 목록 조회 (모든 클럽 조회 가능)"""
@@ -452,9 +450,9 @@ async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="�
 @router.get("/meetings/event")
 async def admin_get_event_meetings(page: int = Query(1, ge=1, description="페이지 번호"),
                                    limit: int = Query(10, ge=1, le=100, description="페이지당 항목 수"),
-                                   status: Optional[str] = Query(None, description="모임 상태 필터"),
-                                   search: Optional[str] = Query(None, description="검색어"),
-                                   club_id: Optional[int] = Query(None, description="클럽 ID 필터"),
+                                   status: str | None = Query(None, description="모임 상태 필터"),
+                                   search: str | None = Query(None, description="검색어"),
+                                   club_id: int | None = Query(None, description="클럽 ID 필터"),
                                    current_user: dict = Depends(get_admin_user),
                                    db: Session = Depends(get_db)):
     """관리자용 이벤트 모임 목록 조회 (모든 클럽 조회 가능)"""
@@ -1271,10 +1269,10 @@ async def admin_delete_participant_hole_score(
 
 class MarkParticipantPaidBody(BaseModel):
     """납부 완료 표시 요청"""
-    user_id: Optional[int] = None
-    guest_id: Optional[int] = None
+    user_id: int | None = None
+    guest_id: int | None = None
     is_paid: bool = True
-    amount_paid: Optional[float] = None
+    amount_paid: float | None = None
 
 
 @router.patch("/meetings/{meeting_id}/expenses/{expense_id}/participants/mark-paid")
@@ -1380,11 +1378,11 @@ async def get_admin_meeting_expenses(
 
 
 class AdminExpenseBody(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    amount: Optional[float] = None
-    category: Optional[str] = None
-    settlement_type: Optional[str] = None  # EQUAL_SPLIT | CLUB_FUND | TREASURER_PREPAID
+    title: str | None = None
+    description: str | None = None
+    amount: float | None = None
+    category: str | None = None
+    settlement_type: str | None = None  # EQUAL_SPLIT | CLUB_FUND | TREASURER_PREPAID
 
 
 @router.post("/meetings/{meeting_id}/expenses")
@@ -2868,7 +2866,7 @@ async def update_admin_meeting(meeting_id: int,
 
 @router.get("/meetings/stats", response_model=MeetingStatsResponse)
 async def get_meeting_statistics(
-    club_id: Optional[int] = Query(None, description="클럽 ID 필터"),
+    club_id: int | None = Query(None, description="클럽 ID 필터"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):

@@ -4,7 +4,6 @@
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional
 import logging
 
 from database import get_db
@@ -19,8 +18,8 @@ router = APIRouter(tags=["admin-notifications"])
 async def get_admin_notifications(
     page: int = 1,
     limit: int = 20,
-    status_filter: Optional[str] = None,
-    type_filter: Optional[str] = None,
+    status_filter: str | None = None,
+    type_filter: str | None = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):

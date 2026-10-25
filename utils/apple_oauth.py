@@ -6,7 +6,7 @@ Apple Sign In (Sign in with Apple) identity token 검증 유틸
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 import jwt
 from jwt import PyJWKClient
@@ -25,7 +25,7 @@ class AppleOAuth:
 
     def __init__(self) -> None:
         # PyJWKClient가 Apple 공개키를 내부적으로 캐싱한다 (키 롤링 대응).
-        self._jwk_client: Optional[PyJWKClient] = None
+        self._jwk_client: PyJWKClient | None = None
 
     @property
     def jwk_client(self) -> PyJWKClient:
@@ -39,7 +39,7 @@ class AppleOAuth:
         raw = [settings.APPLE_BUNDLE_ID, settings.APPLE_SERVICE_ID]
         return [value for value in raw if value]
 
-    def verify_identity_token(self, identity_token: str) -> Dict[str, Any]:
+    def verify_identity_token(self, identity_token: str) -> dict[str, Any]:
         """
         Apple identity token 서명 및 클레임 검증.
 
@@ -89,7 +89,7 @@ class AppleOAuth:
     def get_user_info(
         self,
         identity_token: str,
-        full_name: Optional[str] = None,
+        full_name: str | None = None,
     ) -> OAuthUserInfo:
         """
         identity token을 검증하고 OAuthUserInfo로 변환한다.

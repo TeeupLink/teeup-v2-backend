@@ -4,7 +4,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import Optional
 import logging
 from datetime import datetime
 
@@ -1043,9 +1042,9 @@ async def get_admin_club_pending_members(club_id: str,
 @router.get("/clubs/{club_id}/members")
 async def get_admin_club_members(
     club_id: str,
-    search: Optional[str] = Query(None, description="닉네임/이메일/실명/전화번호 검색"),
-    role_filter: Optional[str] = Query(None, description="역할 필터: LEADER, MANAGER, MEMBER"),
-    status_filter: Optional[str] = Query(None, description="상태 필터: ACTIVE, PENDING 등"),
+    search: str | None = Query(None, description="닉네임/이메일/실명/전화번호 검색"),
+    role_filter: str | None = Query(None, description="역할 필터: LEADER, MANAGER, MEMBER"),
+    status_filter: str | None = Query(None, description="상태 필터: ACTIVE, PENDING 등"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):

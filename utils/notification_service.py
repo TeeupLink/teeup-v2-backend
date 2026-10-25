@@ -3,7 +3,6 @@
 다양한 이벤트에 대한 알림 생성 및 전송 기능
 """
 from sqlalchemy.orm import Session
-from typing import Optional
 from models import Notification, NotificationType, NotificationStatus, User, Meeting, MeetingParticipant
 from datetime import datetime
 import logging
@@ -21,9 +20,9 @@ def _is_meeting_recruitment_closed(meeting: Meeting) -> bool:
 def notify_organizer_participant_added_after_recruitment_closed(
     db: Session,
     meeting_id: int,
-    participant_user_id: Optional[int] = None,
-    participant_guest_name: Optional[str] = None,
-) -> Optional[Notification]:
+    participant_user_id: int | None = None,
+    participant_guest_name: str | None = None,
+) -> Notification | None:
     """
     모집 완료 단계에서 참가자가 추가되면 모임 organizer(created_by)에게 알림 전송
     """
@@ -66,7 +65,7 @@ def notify_organizer_participant_added_after_recruitment_closed(
     )
 
 
-def _status_to_label(status_value: Optional[str]) -> str:
+def _status_to_label(status_value: str | None) -> str:
     if status_value == "SCHEDULED":
         return "모집중"
     if status_value == "IN_PROGRESS":
@@ -81,8 +80,8 @@ def _status_to_label(status_value: Optional[str]) -> str:
 def notify_round_participants_status_changed(
     db: Session,
     meeting_id: int,
-    previous_status: Optional[str],
-    current_status: Optional[str],
+    previous_status: str | None,
+    current_status: str | None,
 ) -> int:
     """라운딩 상태 변경 시 참가자 전원에게 알림 전송"""
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()

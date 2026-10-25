@@ -5,7 +5,6 @@ FAQ 클라이언트 API (조회용)
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import List, Optional
 import logging
 
 from database import get_db
@@ -39,8 +38,8 @@ def _to_faq_response(faq: FAQ) -> FAQResponse:
 async def client_faq_list_api(
     page: int = Query(1, ge=1),
     limit: int = Query(5, ge=1, le=100),
-    search: Optional[str] = None,
-    category_id: Optional[str] = None,
+    search: str | None = None,
+    category_id: str | None = None,
     db: Session = Depends(get_db),
 ):
     """FAQ 목록 조회 (클라이언트 - 공개만)"""
@@ -95,7 +94,7 @@ async def client_faq_detail_api(
     
     return _to_faq_response(faq)
 
-@client_router.get("/faq-categories", response_model=List[FAQCategoryResponse])
+@client_router.get("/faq-categories", response_model=list[FAQCategoryResponse])
 async def client_faq_categories_api(
     db: Session = Depends(get_db)
 ):

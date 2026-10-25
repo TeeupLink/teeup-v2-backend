@@ -1,6 +1,5 @@
 # 문의 관련 스키마
 from pydantic import BaseModel, Field
-from typing import List, Optional
 from datetime import datetime
 from .enums import InquiryType, InquiryStatus
 # 문의 관련 스키마
@@ -10,10 +9,10 @@ class InquiryCreate(BaseModel):
     type: InquiryType = Field(..., description="문의 타입")
 
 class InquiryUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=255, description="문의 제목")
-    content: Optional[str] = Field(None, min_length=1, description="문의 내용")
-    type: Optional[InquiryType] = Field(None, description="문의 타입")
-    status: Optional[InquiryStatus] = Field(None, description="문의 상태")
+    title: str | None = Field(None, min_length=1, max_length=255, description="문의 제목")
+    content: str | None = Field(None, min_length=1, description="문의 내용")
+    type: InquiryType | None = Field(None, description="문의 타입")
+    status: InquiryStatus | None = Field(None, description="문의 상태")
 
 class InquiryResponse(BaseModel):
     id: int
@@ -24,13 +23,13 @@ class InquiryResponse(BaseModel):
     content: str
     type: str
     status: str
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
     
     model_config = {"from_attributes": True}
 
 class InquiryListResponse(BaseModel):
-    inquiries: List[InquiryResponse]
+    inquiries: list[InquiryResponse]
     total: int
     page: int
     size: int
@@ -42,8 +41,8 @@ class InquiryResponseCreate(BaseModel):
     is_internal: bool = Field(default=False, description="내부 메모 여부")
 
 class InquiryResponseUpdate(BaseModel):
-    content: Optional[str] = Field(None, min_length=1, description="답변 내용")
-    is_internal: Optional[bool] = Field(None, description="내부 메모 여부")
+    content: str | None = Field(None, min_length=1, description="답변 내용")
+    is_internal: bool | None = Field(None, description="내부 메모 여부")
 
 class InquiryResponseResponse(BaseModel):
     id: int
@@ -52,12 +51,12 @@ class InquiryResponseResponse(BaseModel):
     admin_name: str
     content: str
     is_internal: bool
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
     
     model_config = {"from_attributes": True}
 
 class InquiryDetailResponse(BaseModel):
     inquiry: InquiryResponse
-    responses: List[InquiryResponseResponse]
+    responses: list[InquiryResponseResponse]
     total_responses: int
 

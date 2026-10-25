@@ -5,7 +5,7 @@ import os
 import base64
 import requests
 import json
-from typing import Dict, Any, Optional
+from typing import Any
 from datetime import datetime
 import logging
 
@@ -23,7 +23,7 @@ class TossPaymentsAPI:
             "Content-Type": "application/json"
         }
     
-    def confirm_payment(self, payment_key: str, order_id: str, amount: int) -> Dict[str, Any]:
+    def confirm_payment(self, payment_key: str, order_id: str, amount: int) -> dict[str, Any]:
         """결제 승인"""
         try:
             url = f"{self.base_url}/v1/payments/confirm"
@@ -44,7 +44,7 @@ class TossPaymentsAPI:
             logger.error(f"결제 승인 실패: {e}")
             raise Exception(f"결제 승인 실패: {str(e)}")
     
-    def cancel_payment(self, payment_key: str, cancel_reason: str, cancel_amount: Optional[int] = None) -> Dict[str, Any]:
+    def cancel_payment(self, payment_key: str, cancel_reason: str, cancel_amount: int | None = None) -> dict[str, Any]:
         """결제 취소/환불"""
         try:
             url = f"{self.base_url}/v1/payments/{payment_key}/cancel"
@@ -66,7 +66,7 @@ class TossPaymentsAPI:
             logger.error(f"결제 취소 실패: {e}")
             raise Exception(f"결제 취소 실패: {str(e)}")
     
-    def get_payment(self, payment_key: str) -> Dict[str, Any]:
+    def get_payment(self, payment_key: str) -> dict[str, Any]:
         """결제 조회"""
         try:
             url = f"{self.base_url}/v1/payments/{payment_key}"
@@ -84,7 +84,7 @@ class TossPaymentsAPI:
     
     def create_payment_widget_url(self, order_id: str, order_name: str, amount: int, 
                                  customer_name: str, customer_email: str,
-                                 success_url: str, fail_url: str) -> Dict[str, Any]:
+                                 success_url: str, fail_url: str) -> dict[str, Any]:
         """결제 위젯 URL 생성"""
         return {
             "orderId": order_id,

@@ -4,7 +4,6 @@
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional
 import logging
 
 from database import get_db
@@ -21,8 +20,8 @@ router = APIRouter(tags=["admin-payments"])
 async def get_admin_payments(
     page: int = 1,
     size: int = 20,
-    status_filter: Optional[str] = None,
-    user_id: Optional[int] = None,
+    status_filter: str | None = None,
+    user_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
@@ -189,7 +188,7 @@ async def admin_cancel_payment(
 async def get_admin_refunds(
     page: int = 1,
     size: int = 20,
-    status_filter: Optional[str] = None,
+    status_filter: str | None = None,
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):

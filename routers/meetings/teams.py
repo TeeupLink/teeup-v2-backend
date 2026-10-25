@@ -6,7 +6,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import or_
-from typing import List, Optional
+from typing import Optional
 # import uuid  # generate_cuid 사용으로 변경
 import logging
 
@@ -52,7 +52,7 @@ def check_team_management_permission(user_id: int, meeting: Meeting, db: Session
         return False
 
 
-@router.get("/", response_model=List[TeamResponse])
+@router.get("/", response_model=list[TeamResponse])
 async def get_teams(meeting_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
     """팀 목록 조회"""
     try:

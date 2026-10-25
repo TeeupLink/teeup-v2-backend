@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 from utils.datetime_utils import get_kst_now
 

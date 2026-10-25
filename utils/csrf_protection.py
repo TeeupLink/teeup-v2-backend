@@ -5,7 +5,6 @@ import secrets
 import hashlib
 import hmac
 import time
-from typing import Dict, Set
 from fastapi import Request, HTTPException, status
 from fastapi.responses import Response
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -46,7 +45,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/csrf-token"  # CSRF 토큰 요청은 제외
         }
         # CSRF 토큰 저장소 (실제로는 Redis나 세션에 저장)
-        self.csrf_tokens: Dict[str, float] = {}
+        self.csrf_tokens: dict[str, float] = {}
         self.token_expiry = 3600  # 1시간
         # 전역 인스턴스로 등록
         set_middleware_instance(self)

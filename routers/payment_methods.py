@@ -3,7 +3,7 @@
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime
 import logging
 import secrets
@@ -27,7 +27,7 @@ def generate_payment_method_id() -> str:
     chars = string.ascii_lowercase + string.digits
     return ''.join(secrets.choice(chars) for _ in range(20))
 
-@router.get("/", response_model=List[PaymentMethodResponse])
+@router.get("/", response_model=list[PaymentMethodResponse])
 async def get_my_payment_methods(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user)

@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,7 @@ router = APIRouter(prefix="/clubs", tags=["클럽 멤버 관리"])
 ACTIVE_MEMBERSHIP_STATUSES = [MembershipStatus.ACTIVE, "APPROVED"]
 
 
-def _is_active_membership(membership: Optional[ClubMembership]) -> bool:
+def _is_active_membership(membership: ClubMembership | None) -> bool:
     if not membership or not membership.status:
         return False
     status_value = membership.status.value if hasattr(membership.status, "value") else str(membership.status)
@@ -193,7 +192,7 @@ async def get_club_member_record_summary(
             .all()
         )
 
-        rounding_history: List[ClubMemberRoundingHistoryItem] = []
+        rounding_history: list[ClubMemberRoundingHistoryItem] = []
         for ush, mtg in history_rows:
             net_val = float(ush.net_score) if ush.net_score is not None else None
             hc_val = float(ush.handicap_used) if ush.handicap_used is not None else None
@@ -243,7 +242,7 @@ async def get_club_member_record_summary(
 
 @router.get("/members/search", response_model=ClubMemberSearchResponse)
 async def search_members_in_my_clubs(
-    name: Optional[str] = Query(None, description="이름 검색어 (실명/닉네임 부분 일치, 비우면 전체)"),
+    name: str | None = Query(None, description="이름 검색어 (실명/닉네임 부분 일치, 비우면 전체)"),
     limit: int = Query(100, ge=1, le=500, description="최대 반환 인원 수"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
@@ -870,7 +869,7 @@ async def approve_membership(
 async def reject_membership(
     club_id: str,
     user_id: int,
-    reject_data: Optional[dict] = Body(None),
+    reject_data: dict | None = Body(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):

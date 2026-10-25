@@ -5,7 +5,6 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
-from typing import List, Optional
 import logging
 
 from database import get_db
@@ -38,7 +37,7 @@ def _ensure_admin(admin_data: dict):
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
 
 
-@router.get("/faq-categories", response_model=List[FAQCategoryResponse])
+@router.get("/faq-categories", response_model=list[FAQCategoryResponse])
 async def admin_faq_categories_api(
     db: Session = Depends(get_db),
     admin_data: dict = Depends(get_admin_user),
@@ -134,8 +133,8 @@ async def admin_faq_category_delete_api(
 async def admin_faq_list_api(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
-    search: Optional[str] = None,
-    category_id: Optional[str] = None,
+    search: str | None = None,
+    category_id: str | None = None,
     db: Session = Depends(get_db),
     admin_data: dict = Depends(get_admin_user),
 ):

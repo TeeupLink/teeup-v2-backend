@@ -29,7 +29,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import perf_counter
-from typing import Any, Optional, get_args, get_origin
+from typing import Any, get_args, get_origin
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -78,7 +78,7 @@ class RequestRecord:
     status_code: int
     elapsed_ms: float
     failed: bool
-    error: Optional[str] = None
+    error: str | None = None
 
 
 @dataclass
@@ -88,7 +88,7 @@ class ReplayRequest:
     path_url: str
     name: str
     headers: dict[str, str]
-    json_body: Optional[dict]
+    json_body: dict | None
     elapsed_ms: float
     status_code: int
 
@@ -193,9 +193,9 @@ class LocustLikeHttpClient:
         method: str,
         path: str,
         *,
-        headers: Optional[dict] = None,
-        json_body: Optional[dict] = None,
-        name: Optional[str] = None,
+        headers: dict | None = None,
+        json_body: dict | None = None,
+        name: str | None = None,
         catch_response: bool = False,
     ):
         """요청을 전송하고 응답/프로파일링용 리플레이 정보를 함께 기록"""
@@ -274,7 +274,7 @@ class LocustLikeHttpClient:
         self.records.append(record)
         return response
 
-    def get(self, path: str, *, headers: Optional[dict] = None, name: Optional[str] = None, catch_response: bool = False):
+    def get(self, path: str, *, headers: dict | None = None, name: str | None = None, catch_response: bool = False):
         """GET 요청을 전송"""
         return self._request("GET", path, headers=headers, name=name, catch_response=catch_response)
 
@@ -282,9 +282,9 @@ class LocustLikeHttpClient:
         self,
         path: str,
         *,
-        headers: Optional[dict] = None,
-        json: Optional[dict] = None,
-        name: Optional[str] = None,
+        headers: dict | None = None,
+        json: dict | None = None,
+        name: str | None = None,
         catch_response: bool = False,
     ):
         """POST 요청을 전송"""
@@ -301,9 +301,9 @@ class LocustLikeHttpClient:
         self,
         path: str,
         *,
-        headers: Optional[dict] = None,
-        json: Optional[dict] = None,
-        name: Optional[str] = None,
+        headers: dict | None = None,
+        json: dict | None = None,
+        name: str | None = None,
         catch_response: bool = False,
     ):
         """PUT 요청을 전송"""
@@ -595,7 +595,7 @@ def print_router_endpoint_inventory(router_endpoints: dict[str, list[dict]]) -> 
     print(f"{'Total':24} {total:10d}")
 
 
-def _match_route_template(method: str, request_path: str, route_matchers: list[dict]) -> Optional[dict]:
+def _match_route_template(method: str, request_path: str, route_matchers: list[dict]) -> dict | None:
     """실제 요청 경로를 route regex에 매칭해 템플릿 endpoint를 찾는다."""
     for matcher in route_matchers:
         if matcher["method"] != method:
@@ -875,7 +875,7 @@ def _render_route_path(
     full_path: str,
     path_param_names: list[str],
     path_param_values: dict[str, str],
-    path_param_annotations: Optional[dict[str, Any]] = None,
+    path_param_annotations: dict[str, Any] | None = None,
 ) -> str:
     """라우트 템플릿(/x/{id})을 실제 호출 경로(/x/1)로 변환"""
     rendered = full_path
@@ -959,7 +959,7 @@ def _sample_value_for_annotation(annotation: Any, depth: int = 0) -> Any:
     return None
 
 
-def _build_body_from_annotation(annotation: Any) -> Optional[dict]:
+def _build_body_from_annotation(annotation: Any) -> dict | None:
     """요청 본문 annotation에서 JSON 샘플 payload를 생성"""
     sample = _sample_value_for_annotation(annotation)
     if sample is None:
@@ -973,7 +973,7 @@ def _build_body_for_route(
     matcher: dict,
     schema_samples: dict[str, dict],
     route_samples: dict[str, dict],
-) -> Optional[dict]:
+) -> dict | None:
     """라우트별 body 샘플을 route > schema > annotation 순으로 선택"""
     route_sample_key = matcher.get("route_sample_key")
     if route_sample_key and route_sample_key in route_samples:
@@ -987,7 +987,7 @@ def _build_body_for_route(
     return _build_body_from_annotation(annotation)
 
 
-def _build_headers_for_route(method: str, auth_token: Optional[str]) -> dict[str, str]:
+def _build_headers_for_route(method: str, auth_token: str | None) -> dict[str, str]:
     """엔드포인트 호출용 기본 헤더를 구성"""
     headers: dict[str, str] = {}
     if auth_token:
@@ -1002,7 +1002,7 @@ def _invoke_route_once(
     method: str,
     path: str,
     headers: dict[str, str],
-    json_body: Optional[dict],
+    json_body: dict | None,
     name: str,
 ) -> None:
     """단일 라우트를 실행하고 예외를 RequestRecord로 기록"""
@@ -1408,7 +1408,7 @@ def ensure_server_ready(
     python_exec: str,
     port: int,
     server_log_path: Path,
-) -> tuple[Optional[subprocess.Popen], Optional[Any], bool]:
+) -> tuple[subprocess.Popen | None, Any | None, bool]:
     """health 확인 후 기존 서버를 재사용하거나 테스트 서버를 새로 기동한다."""
     process = None
     log_file = None

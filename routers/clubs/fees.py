@@ -1,7 +1,6 @@
 # 클럽 회비 관리 API들
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -215,7 +214,7 @@ async def update_regular_fee(
 
 # ===== 회비 항목 관리 =====
 
-@router.get("/{club_id}/fees", response_model=List[ClubFeeResponse])
+@router.get("/{club_id}/fees", response_model=list[ClubFeeResponse])
 async def get_club_fees(
     club_id: str,
     db: Session = Depends(get_db),

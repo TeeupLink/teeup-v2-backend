@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 import requests
 from fastapi import HTTPException, status
@@ -96,7 +95,7 @@ def fetch_all_regions() -> list[dict]:
     return all_rows
 
 
-def _get_region_level(row: dict) -> Optional[str]:
+def _get_region_level(row: dict) -> str | None:
     level = row.get("region_level")
     if level:
         return str(level)
@@ -112,7 +111,7 @@ def _get_region_level(row: dict) -> Optional[str]:
     return None
 
 
-def _to_str(value) -> Optional[str]:
+def _to_str(value) -> str | None:
     if value is None:
         return None
     value = str(value).strip()

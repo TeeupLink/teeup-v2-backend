@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import text, or_, and_, select
-from typing import List, Optional
 from decimal import Decimal
 from datetime import date, datetime, time, timezone
 from utils.datetime_utils import get_kst_now
@@ -442,16 +441,16 @@ async def get_rounding_meetings(page: int = Query(1, ge=1),
 
 
 @router.get("/", response_model=PaginatedResponse)
-async def get_meetings(club_id: Optional[int] = None,
+async def get_meetings(club_id: int | None = None,
                        page: int = 1,
                        limit: int = 10,
-                       status_filter: Optional[MeetingStatus] = None,
-                       meeting_type_filter: Optional[MeetingType] = None,
-                       status_group: Optional[str] = None,
-                       search: Optional[str] = None,
-                       start_date: Optional[date] = None,
-                       end_date: Optional[date] = None,
-                       list_type: Optional[str] = Query(None, description="목록 타입(rounding|social|participating)"),
+                       status_filter: MeetingStatus | None = None,
+                       meeting_type_filter: MeetingType | None = None,
+                       status_group: str | None = None,
+                       search: str | None = None,
+                       start_date: date | None = None,
+                       end_date: date | None = None,
+                       list_type: str | None = Query(None, description="목록 타입(rounding|social|participating)"),
                        db: Session = Depends(get_db),
                        current_user: User = Depends(get_current_active_user)):
     """모임 목록 조회 (내 클럽 기본 + 타입 분기)"""
@@ -595,8 +594,8 @@ async def get_meetings(club_id: Optional[int] = None,
 @router.get("/my", response_model=PaginatedResponse)
 async def get_my_meetings(page: int = 1,
                           limit: int = 10,
-                          status_filter: Optional[MeetingStatus] = None,
-                          meeting_type_filter: Optional[MeetingType] = None,
+                          status_filter: MeetingStatus | None = None,
+                          meeting_type_filter: MeetingType | None = None,
                           db: Session = Depends(get_db),
                           current_user: User = Depends(get_current_active_user)):
     """내가 참가한 모임 목록 조회"""
@@ -679,10 +678,10 @@ async def get_my_meetings(page: int = 1,
 @router.get("/my/participating", response_model=PaginatedResponse)
 async def get_my_participating_meetings(page: int = 1,
                                         limit: int = 10,
-                                        status_group: Optional[str] = None,
-                                        search: Optional[str] = None,
-                                        start_date: Optional[date] = None,
-                                        end_date: Optional[date] = None,
+                                        status_group: str | None = None,
+                                        search: str | None = None,
+                                        start_date: date | None = None,
+                                        end_date: date | None = None,
                                         db: Session = Depends(get_db),
                                         current_user: User = Depends(get_current_active_user)):
     """내가 참여중인(참가자) 모임 목록 조회"""
@@ -1141,9 +1140,9 @@ async def cancel_meeting(meeting_id: int,
 async def get_club_meetings(club_id: str,
                             page: int = 1,
                             limit: int = 10,
-                            status_filter: Optional[MeetingStatus] = None,
-                            meeting_type_filter: Optional[MeetingType] = None,
-                            search: Optional[str] = None,
+                            status_filter: MeetingStatus | None = None,
+                            meeting_type_filter: MeetingType | None = None,
+                            search: str | None = None,
                             db: Session = Depends(get_db),
                             current_user: User = Depends(get_current_active_user)):
     """클럽별 모임 목록 조회"""
@@ -1251,7 +1250,7 @@ class MeetingNotificationRequest(BaseModel):
     content: str
     notification_type: str = "MEETING_UPDATE"  # MEETING_UPDATE, MEETING_REMINDER, MEETING_CANCEL
     send_to_all_participants: bool = True
-    participant_ids: Optional[List[int]] = None
+    participant_ids: list[int] | None = None
 
 
 class MeetingNotificationResponse(BaseModel):

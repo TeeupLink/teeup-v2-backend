@@ -8,7 +8,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
-from typing import List, Optional
 from datetime import datetime
 from decimal import Decimal
 import logging
@@ -51,7 +50,7 @@ def assert_club_settlement_api_allowed(meeting: Meeting, db: Session) -> None:
         )
 
 
-def _resolve_extra_payer_index(effective_ids: list, extra_payer_id) -> Optional[int]:
+def _resolve_extra_payer_index(effective_ids: list, extra_payer_id) -> int | None:
     """나머지 10원을 부담할 참가자의 effective_ids 내 인덱스 반환. 없으면 None."""
     if extra_payer_id is None:
         return None

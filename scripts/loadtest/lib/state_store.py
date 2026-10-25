@@ -3,7 +3,6 @@
 
 from dataclasses import dataclass, field
 from threading import Lock
-from typing import Optional
 import random
 
 
@@ -11,17 +10,17 @@ import random
 class UserRuntimeState:
     vu_id: int
     run_id: str
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    user_id: Optional[int] = None
-    email: Optional[str] = None
+    access_token: str | None = None
+    refresh_token: str | None = None
+    user_id: int | None = None
+    email: str | None = None
     is_new_user: bool = False
 
-    joined_club_id: Optional[str] = None
-    managed_club_id: Optional[str] = None
-    managed_club_numeric_id: Optional[int] = None
-    target_meeting_id: Optional[int] = None
-    target_participant_id: Optional[int] = None
+    joined_club_id: str | None = None
+    managed_club_id: str | None = None
+    managed_club_numeric_id: int | None = None
+    target_meeting_id: int | None = None
+    target_participant_id: int | None = None
 
     extra: dict = field(default_factory=dict)
 
@@ -63,7 +62,7 @@ class StateStore:
         with self._lock:
             self._clubs[club_id] = SharedClub(id=club_id, display_id=display_id, owner_vu_id=owner_vu_id)
 
-    def get_random_club(self) -> Optional[SharedClub]:
+    def get_random_club(self) -> SharedClub | None:
         with self._lock:
             if not self._clubs:
                 return None
@@ -87,9 +86,9 @@ class StateStore:
     def update_meeting_flags(
         self,
         meeting_id: int,
-        rounding_completed: Optional[bool] = None,
-        settlement_confirmed: Optional[bool] = None,
-        completed: Optional[bool] = None,
+        rounding_completed: bool | None = None,
+        settlement_confirmed: bool | None = None,
+        completed: bool | None = None,
     ) -> None:
         with self._lock:
             meeting = self._meetings.get(meeting_id)
@@ -102,7 +101,7 @@ class StateStore:
             if completed is not None:
                 meeting.completed = completed
 
-    def get_random_meeting(self, include_completed: bool = False) -> Optional[SharedMeeting]:
+    def get_random_meeting(self, include_completed: bool = False) -> SharedMeeting | None:
         with self._lock:
             meetings = list(self._meetings.values())
             if not include_completed:

@@ -6,7 +6,6 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_, case
-from typing import List, Optional
 from datetime import date, datetime, time
 from decimal import Decimal
 from utils.datetime_utils import get_kst_now
@@ -48,10 +47,10 @@ logger = logging.getLogger(__name__)
 @router.get("/", response_model=PaginatedResponse[MeetingResponse])
 async def get_rounds(page: int = Query(1, ge=1, description="페이지 번호"),
                      limit: int = Query(10, ge=1, le=100, description="페이지당 항목 수"),
-                     status_group: Optional[str] = Query(None, description="상태 그룹(active|completed)"),
-                     search: Optional[str] = Query(None, description="검색어"),
-                     start_date: Optional[date] = Query(None, description="시작일(YYYY-MM-DD)"),
-                     end_date: Optional[date] = Query(None, description="종료일(YYYY-MM-DD)"),
+                     status_group: str | None = Query(None, description="상태 그룹(active|completed)"),
+                     search: str | None = Query(None, description="검색어"),
+                     start_date: date | None = Query(None, description="시작일(YYYY-MM-DD)"),
+                     end_date: date | None = Query(None, description="종료일(YYYY-MM-DD)"),
                      current_user: User = Depends(get_current_active_user),
                      db: Session = Depends(get_db)):
     """라운딩 목록 조회 - 모든 라운딩 노출(완료/취소 포함). 프라이빗은 참가한 모임에서만 노출."""
@@ -862,7 +861,7 @@ async def get_round_participants(meeting_id: int,
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="서버 내부 오류가 발생했습니다.")
 
 
-@router.get("/{meeting_id}/teams", response_model=List[TeamResponse])
+@router.get("/{meeting_id}/teams", response_model=list[TeamResponse])
 async def get_round_teams(meeting_id: int,
                           current_user: User = Depends(get_current_user_allow_both),
                           credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -1021,7 +1020,7 @@ async def get_round_teams(meeting_id: int,
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="서버 내부 오류가 발생했습니다.")
 
 
-@router.put("/{meeting_id}/teams", response_model=List[TeamResponse])
+@router.put("/{meeting_id}/teams", response_model=list[TeamResponse])
 async def update_round_teams(
     meeting_id: int,
     team_data: TeamBulkUpdateRequest,

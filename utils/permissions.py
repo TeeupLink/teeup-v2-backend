@@ -3,7 +3,6 @@
 """
 from fastapi import HTTPException, status, Depends, Request
 from sqlalchemy.orm import Session
-from typing import Optional
 import logging
 
 from database import get_db
@@ -19,7 +18,7 @@ MEMBERSHIP_ACTIVE_STATUSES = {
     "APPROVED",  # 레거시 호환성을 위해 문자열로 추가
 }
 
-def is_active_membership_status(status: Optional[str]) -> bool:
+def is_active_membership_status(status: str | None) -> bool:
     """멤버십이 활성 상태인지 확인"""
     return status in MEMBERSHIP_ACTIVE_STATUSES
 

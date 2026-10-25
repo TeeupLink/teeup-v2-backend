@@ -8,7 +8,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
-from typing import List, Optional
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 import logging
@@ -1042,8 +1041,8 @@ async def confirm_settlement(meeting_id: int,
 async def send_application_closed_notification(meeting_id: int,
                                                db: Session,
                                                is_early: bool = False,
-                                               outcome: Optional[str] = None,
-                                               participant_count: Optional[int] = None):
+                                               outcome: str | None = None,
+                                               participant_count: int | None = None):
     """모집 마감 시 참가자들에게 알림 전송"""
     try:
         # 모임 정보 조회

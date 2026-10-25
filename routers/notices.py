@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
-from typing import List, Optional
 from datetime import datetime
 
 from database import get_db
@@ -19,10 +18,10 @@ router = APIRouter(prefix="/notices", tags=["notices"])
 async def get_notices(
     page: int = Query(1, ge=1, description="페이지 번호"),
     size: int = Query(20, ge=1, le=100, description="페이지 크기"),
-    type: Optional[str] = Query(None, description="공지사항 타입"),
-    is_published: Optional[bool] = Query(None, description="발행 여부"),
-    is_important: Optional[bool] = Query(None, description="중요 공지 여부"),
-    search: Optional[str] = Query(None, description="제목 검색"),
+    type: str | None = Query(None, description="공지사항 타입"),
+    is_published: bool | None = Query(None, description="발행 여부"),
+    is_important: bool | None = Query(None, description="중요 공지 여부"),
+    search: str | None = Query(None, description="제목 검색"),
     db: Session = Depends(get_db)
 ):
     """공지사항 목록 조회"""
@@ -147,7 +146,7 @@ async def get_notice(
         raise HTTPException(status_code=500, detail=f"공지사항 조회 실패: {str(e)}")
 
 
-@router.get("/types/", response_model=List[dict])
+@router.get("/types/", response_model=list[dict])
 async def get_notice_types():
     """공지사항 타입 목록 조회"""
     return [

@@ -1,6 +1,5 @@
 # 스코어 관련 스키마
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import AliasChoices, BaseModel, Field, model_validator
 
@@ -15,7 +14,7 @@ class _ScoreInputBase(BaseModel):
         validation_alias=AliasChoices("strokes", "score"),  # 프런트 하위호환
     )
     par: int = Field(..., ge=3, le=6, description="파")
-    score_to_par: Optional[int] = Field(None, description="파 대비 점수")
+    score_to_par: int | None = Field(None, description="파 대비 점수")
 
     @model_validator(mode="after")
     def validate_or_fill_score_to_par(self):
@@ -37,16 +36,16 @@ class MeetingParticipantScoreCreate(_ScoreInputBase):
 
 
 class ScoreUpdate(BaseModel):
-    hole_number: Optional[int] = Field(None, ge=1, le=18, description="홀 번호")
-    strokes: Optional[int] = Field(
+    hole_number: int | None = Field(None, ge=1, le=18, description="홀 번호")
+    strokes: int | None = Field(
         None,
         ge=1,
         le=20,
         description="타수",
         validation_alias=AliasChoices("strokes", "score"),  # 프런트 하위호환
     )
-    par: Optional[int] = Field(None, ge=3, le=6, description="파")
-    score_to_par: Optional[int] = Field(None, description="파 대비 점수")
+    par: int | None = Field(None, ge=3, le=6, description="파")
+    score_to_par: int | None = Field(None, description="파 대비 점수")
 
 
 class ScoreResponse(BaseModel):
@@ -61,8 +60,8 @@ class ScoreResponse(BaseModel):
     strokes: int
     par: int
     score_to_par: int
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -73,12 +72,12 @@ class SimpleScoreCreate(BaseModel):
 
 class SimpleScoreResponse(BaseModel):
     message: str
-    score_history_id: Optional[int] = None
-    updated_handicap: Optional[float] = None
+    score_history_id: int | None = None
+    updated_handicap: float | None = None
 
 
 class ScoreListResponse(BaseModel):
-    scores: List[ScoreResponse]
+    scores: list[ScoreResponse]
     total: int
     page: int
     limit: int

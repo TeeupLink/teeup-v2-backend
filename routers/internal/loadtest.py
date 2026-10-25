@@ -3,7 +3,6 @@
 import ipaddress
 import logging
 from datetime import datetime
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -59,11 +58,11 @@ class LoadtestOAuthMockRequest(BaseModel):
     provider_id: str = Field(..., min_length=1, max_length=255)
     email: str = Field(..., min_length=3, max_length=255)
     name: str = Field(..., min_length=1, max_length=255)
-    picture: Optional[str] = None
+    picture: str | None = None
     verified_email: bool = True
-    push_token: Optional[str] = None
-    token_type: Optional[str] = Field(default="FCM", max_length=32)
-    enabled: Optional[bool] = True
+    push_token: str | None = None
+    token_type: str | None = Field(default="FCM", max_length=32)
+    enabled: bool | None = True
 
 
 class LoadtestBootstrapResponse(BaseModel):

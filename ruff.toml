@@ -1,0 +1,28 @@
+# 린트 설정. 이게 없으면 사람마다 에디터 확장 기본값으로 돌아서 경고가 달라진다.
+#
+# 2026-10-26: 타입 어노테이션을 신문법으로 전부 옮겼다 (docs/typing-modernization.md).
+#   Optional[X] -> X | None,  List[X] -> list[X]
+#
+# 규칙은 "지금 실제로 지키고 있는 것" 만 켠다. 안 지킬 규칙을 켜 두면
+# 경고가 배경 소음이 되고, 그러면 진짜 문제도 같이 묻힌다.
+
+target-version = "py312"   # Dockerfile 이 python:3.12-slim
+line-length = 120
+
+[lint]
+select = [
+    "E9",     # 구문 오류
+    "F821",   # 정의되지 않은 이름 - 호출되면 NameError 다
+    "F823",   # 대입 전에 참조
+    "UP006",  # List[X]     -> list[X]
+    "UP007",  # Union[X, Y] -> X | Y
+    "UP035",  # typing.List 등 deprecated import
+    "UP045",  # Optional[X] -> X | None
+]
+
+# 아래는 일부러 켜지 않았다. 켜면 전부 기존 코드에서 대량으로 걸리는데
+# 이번 작업 범위가 아니다. 정리하려면 각각 별도 작업으로 한다.
+#   F401 미사용 import  (244건. schemas/__init__.py 처럼 재수출 목적이 섞여 있다)
+#   I001 import 정렬    (220건)
+#   F841 미사용 변수    (38건)
+#   F541 placeholder 없는 f-string (37건)

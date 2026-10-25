@@ -1,0 +1,8 @@
+# 개발용 도구. 운영 이미지에는 들어가지 않는다.
+# (Dockerfile 은 requirements.txt 만 설치한다)
+#
+#   pip install -r requirements-dev.txt
+#   ruff check .            # 설정은 ruff.toml
+#   ruff check . --fix
+
+ruff==0.17.2
