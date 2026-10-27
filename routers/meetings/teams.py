@@ -264,26 +264,14 @@ async def create_team(team_data: TeamCreate,
 
         print("권한 확인 통과 (임시 비활성화)")
 
-        # 팀 생성
-        import secrets
-        import string
-
-        # 직접 짧은 ID 생성 (25자 이내)
-        chars = string.ascii_lowercase + string.digits
-        team_id = ''.join(secrets.choice(chars) for _ in range(20))
-        print(f"생성된 팀 ID: {team_id} (길이: {len(team_id)})")
-        print(f"ID가 UUID인지 확인: {'-' in team_id}")
-
-        team = Team(id=team_id,
-                    name=team_data.name,
+        # 팀 생성. teams.id 는 AUTO_INCREMENT 이므로 직접 넣지 않는다.
+        team = Team(name=team_data.name,
                     meeting_id=meeting_id,
                     formation_mode=team_data.formation_mode,
                     status=TeamStatus.DRAFT,
                     formation_notes=team_data.formation_notes)
 
-        print(f"팀 객체 생성: {team.name}, ID: {team.id}, ID 길이: {len(team.id)}")
-        print(f"생성된 ID 타입: {type(team.id)}")
-        print(f"객체 ID가 UUID인지 확인: {'-' in team.id}")
+        print(f"팀 객체 생성: {team.name}")
 
         db.add(team)
         reset_team_formation_confirmation(meeting, db)
