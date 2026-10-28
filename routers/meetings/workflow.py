@@ -11,7 +11,6 @@ from sqlalchemy import func, and_, or_
 from datetime import datetime, time, timedelta
 from decimal import Decimal
 import logging
-from schemas.team import TeamMemberResponse
 from utils.datetime_utils import get_kst_now
 
 from database import get_db

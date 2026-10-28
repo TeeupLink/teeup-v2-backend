@@ -839,9 +839,6 @@ async def create_admin_club(club_data: dict,
                             db: Session = Depends(get_db),
                             current_user: dict = Depends(get_admin_user)):
     """관리자용 클럽 생성"""
-    from models import User, Club, ClubMembership, ClubRole, ClubStatus, ClubRegion
-    from schemas import MembershipStatus
-    from utils.display_id_generator import generate_club_display_id
 
     try:
         # 대표자 사용자 조회
