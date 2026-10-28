@@ -139,7 +139,7 @@ async def get_admin_club(club_id: str, db: Session = Depends(get_db), current_us
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 현재 리더 정보 조회
         current_leader = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
@@ -211,7 +211,7 @@ def _resolve_club(db: Session, club_id: str) -> Club:
         except ValueError:
             club = None
     if not club:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
     return club
 
 
@@ -397,7 +397,7 @@ async def get_admin_club_notice_detail(
         ClubNotice.club_id == club.id,
     ).first()
     if not notice:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="공지사항을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공지사항을 찾을 수 없습니다")
     author = db.query(User).filter(User.id == notice.author_id).first()
     return {
         "id": notice.id,
@@ -431,7 +431,7 @@ async def update_admin_club_notice(
         ClubNotice.club_id == club.id,
     ).first()
     if not notice:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="공지사항을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공지사항을 찾을 수 없습니다")
     data = ClubNoticeUpdate(**{k: v for k, v in notice_data.items() if k in ("title", "content", "is_important", "is_private")})
     if data.title is not None:
         notice.title = data.title
@@ -475,7 +475,7 @@ async def delete_admin_club_notice(
         ClubNotice.club_id == club.id,
     ).first()
     if not notice:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="공지사항을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공지사항을 찾을 수 없습니다")
     db.delete(notice)
     db.commit()
     return {"message": "공지사항이 삭제되었습니다", "success": True}
@@ -540,7 +540,7 @@ async def update_admin_club_fee(
         ClubFee.club_id == club.id,
     ).first()
     if not fee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="회비 항목을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="회비 항목을 찾을 수 없습니다")
     data = ClubFeeUpdate(**{k: v for k, v in fee_data.items() if k in ("name", "amount", "cycle", "description", "is_active")})
     if data.name is not None:
         fee.name = data.name
@@ -584,7 +584,7 @@ async def delete_admin_club_fee(
         ClubFee.club_id == club.id,
     ).first()
     if not fee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="회비 항목을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="회비 항목을 찾을 수 없습니다")
     db.delete(fee)
     db.commit()
     return {"message": "회비 항목이 삭제되었습니다", "success": True}
@@ -648,7 +648,7 @@ async def update_admin_club_regulation_category(
         RegulationCategory.club_id == club.id,
     ).first()
     if not cat:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="카테고리를 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="카테고리를 찾을 수 없습니다")
     if "name" in category_data and category_data["name"]:
         cat.name = category_data["name"].strip()
     if "order" in category_data:
@@ -673,7 +673,7 @@ async def delete_admin_club_regulation_category(
         RegulationCategory.club_id == club.id,
     ).first()
     if not cat:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="카테고리를 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="카테고리를 찾을 수 없습니다")
     db.delete(cat)
     db.commit()
     return {"message": "카테고리가 삭제되었습니다", "success": True}
@@ -696,7 +696,7 @@ async def create_admin_club_regulation(
         RegulationCategory.club_id == club.id,
     ).first()
     if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="규정 카테고리를 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="규정 카테고리를 찾을 수 없습니다")
     admin_name = current_user.get("name", "관리자")
     reg = Regulation(
         club_id=club.id,
@@ -742,7 +742,7 @@ async def get_admin_club_regulation_detail(
         Regulation.club_id == club.id,
     ).first()
     if not reg:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="규정을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="규정을 찾을 수 없습니다")
     cat = db.query(RegulationCategory).filter(RegulationCategory.id == reg.category_id).first()
     return {
         "id": reg.id,
@@ -777,7 +777,7 @@ async def update_admin_club_regulation(
         Regulation.club_id == club.id,
     ).first()
     if not reg:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="규정을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="규정을 찾을 수 없습니다")
     data = ClubRegulationUpdate(**{k: v for k, v in regulation_data.items() if k in ("category_id", "title", "content", "status")})
     if data.category_id is not None:
         cat = db.query(RegulationCategory).filter(
@@ -785,7 +785,7 @@ async def update_admin_club_regulation(
             RegulationCategory.club_id == club.id,
         ).first()
         if not cat:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="규정 카테고리를 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="규정 카테고리를 찾을 수 없습니다")
         reg.category_id = data.category_id
     if data.title is not None:
         reg.title = data.title
@@ -828,7 +828,7 @@ async def delete_admin_club_regulation(
         Regulation.club_id == club.id,
     ).first()
     if not reg:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="규정을 찾을 수 없습니다")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="규정을 찾을 수 없습니다")
     db.delete(reg)
     db.commit()
     return {"message": "규정이 삭제되었습니다", "success": True}
@@ -1009,7 +1009,7 @@ async def get_admin_club_pending_members(club_id: str,
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # PENDING 상태의 멤버들 조회
         pending_memberships = db.query(ClubMembership).join(User).filter(
@@ -1065,7 +1065,7 @@ async def get_admin_club_members(
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 멤버십과 사용자 정보를 JOIN으로 한번에 조회
         query = db.query(ClubMembership, User).join(User, ClubMembership.user_id == User.id).filter(
@@ -1161,7 +1161,7 @@ async def approve_admin_club_membership(club_id: str,
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 가입 신청 조회
         membership = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
@@ -1169,7 +1169,7 @@ async def approve_admin_club_membership(club_id: str,
                                                      ClubMembership.status == MembershipStatus.PENDING).first()
 
         if not membership:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="가입 신청을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입 신청을 찾을 수 없습니다")
 
         # 가입 승인
         membership.status = MembershipStatus.ACTIVE
@@ -1215,7 +1215,7 @@ async def reject_admin_club_membership(club_id: str,
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 가입 신청 조회
         membership = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
@@ -1223,7 +1223,7 @@ async def reject_admin_club_membership(club_id: str,
                                                      ClubMembership.status == MembershipStatus.PENDING).first()
 
         if not membership:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="가입 신청을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입 신청을 찾을 수 없습니다")
 
         # 가입 거절 (멤버십 삭제)
         db.delete(membership)
@@ -1262,12 +1262,12 @@ async def add_admin_club_member(club_id: str,
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 사용자 조회
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="사용자를 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다")
 
         # 이미 멤버인지 확인
         existing_membership = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
@@ -1342,14 +1342,14 @@ async def update_admin_club_member_role(club_id: str,
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 대상 멤버 조회
         target_membership = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
                                                             ClubMembership.user_id == user_id).first()
 
         if not target_membership:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
 
         # 역할 변경
         new_role = role_data.get("new_role") or role_data.get("role")
@@ -1396,14 +1396,14 @@ async def remove_admin_club_member(club_id: str,
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 대상 멤버 조회
         target_membership = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
                                                             ClubMembership.user_id == user_id).first()
 
         if not target_membership:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
 
         # 멤버십 삭제
         db.delete(target_membership)
@@ -1445,7 +1445,7 @@ async def update_admin_club(club_id: str,
                 club = None
 
         if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUNDOUND, detail="클럽을 찾을 수 없습니다")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
 
         # 클럽 정보 수정
         if club_data.get("name") is not None:

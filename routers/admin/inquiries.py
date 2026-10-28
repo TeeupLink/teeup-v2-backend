@@ -1,7 +1,7 @@
 """
 백오피스 문의 관리 API
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 import logging
 
@@ -9,6 +9,7 @@ from database import get_db
 from models import User
 from utils.datetime_utils import get_kst_now
 from .deps import get_admin_user
+from .pagination import BulkRequest, PageParams, apply_sort, bulk_run, paginate
 
 logger = logging.getLogger(__name__)
 
@@ -17,26 +18,89 @@ router = APIRouter(tags=["admin-inquiries"])
 
 @router.get("/inquiries")
 async def get_admin_inquiries(
+        params: PageParams = Depends(),
+        status_filter: list[str] = Query([], alias="status"),
+        type_filter: str | None = Query(None, alias="type"),
+        date_from: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+        date_to: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 문의 목록 조회"""
-    try:
-        from models import Inquiry
-        from sqlalchemy import desc
+    """관리자용 문의 목록 (서버 페이징·필터 — 예전에는 최신 20건 고정이라 21번째 이후 문의를 볼 수 없었다)"""
+    from datetime import datetime, time
 
-        inquiries = db.query(Inquiry).join(User).order_by(desc(Inquiry.created_at)).limit(20).all()
-        inquiry_list = []
-        for i in inquiries:
-            inquiry_list.append({
-                "id": i.id, "title": i.title, "type": i.type.value, "status": i.status.value,
-                "user_nickname": i.user.nickname if i.user else "알 수 없음",
-                "created_at": i.created_at.isoformat() if i.created_at else None,
-            })
-        return {"data": inquiry_list, "total": len(inquiry_list)}
-    except Exception as e:
-        logger.error(f"관리자 문의 목록 조회 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="문의 목록 조회 중 오류가 발생했습니다")
+    from sqlalchemy import func, or_
+
+    from models import Inquiry, InquiryResponse, InquiryStatus, InquiryType
+
+    try:
+        statuses = [InquiryStatus(s) for s in status_filter]
+        inquiry_type = InquiryType(type_filter) if type_filter else None
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"알 수 없는 값입니다: {e}") from e
+
+    response_count = (
+        db.query(InquiryResponse.inquiry_id, func.count(InquiryResponse.id).label("cnt"))
+        .group_by(InquiryResponse.inquiry_id)
+        .subquery()
+    )
+    query = (
+        db.query(Inquiry, User, response_count.c.cnt)
+        .join(User, User.id == Inquiry.user_id)
+        .outerjoin(response_count, response_count.c.inquiry_id == Inquiry.id)
+    )
+    if statuses:
+        query = query.filter(Inquiry.status.in_(statuses))
+    if inquiry_type:
+        query = query.filter(Inquiry.type == inquiry_type)
+    if params.q:
+        query = query.filter(or_(Inquiry.title.like(f"%{params.q}%"), User.nickname.like(f"%{params.q}%")))
+    if date_from:
+        query = query.filter(Inquiry.created_at >= datetime.combine(datetime.fromisoformat(date_from), time.min))
+    if date_to:
+        query = query.filter(Inquiry.created_at <= datetime.combine(datetime.fromisoformat(date_to), time.max))
+    query = apply_sort(query, params.sort, {"created_at": Inquiry.created_at}, default=(Inquiry.created_at.desc(), Inquiry.id.desc()))
+
+    def item(row) -> dict:
+        i, u, cnt = row
+        return {
+            "id": i.id,
+            "title": i.title,
+            "type": i.type.value,
+            "status": i.status.value,
+            "user": {"id": u.id, "nickname": u.nickname},
+            "user_nickname": u.nickname,
+            "response_count": cnt or 0,
+            "created_at": i.created_at.isoformat() if i.created_at else None,
+        }
+
+    page = paginate(query, params, item)
+    # 교체 배포(BO#33) 전까지 기존 백오피스가 읽는 키. 교체 후 제거
+    page["data"] = page["items"]
+    return page
+
+
+@router.post("/inquiries/bulk")
+async def bulk_admin_inquiries(body: BulkRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """일괄 상태 변경 (API-041)"""
+    from models import Inquiry, InquiryStatus
+
+    if body.action != "status" or not body.status:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="action=status 와 status 가 필요합니다")
+    try:
+        new_status = InquiryStatus(body.status)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"알 수 없는 상태입니다: {body.status}") from e
+
+    def one(inquiry_id: int) -> None:
+        inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
+        if not inquiry:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="문의를 찾을 수 없습니다")
+        inquiry.status = new_status
+        inquiry.updated_at = get_kst_now()
+        db.commit()
+
+    return bulk_run(body.ids, one)
 
 
 @router.get("/inquiries/{inquiry_id}")

@@ -9,6 +9,7 @@ import logging
 
 from database import get_db
 from utils.jwt_auth import jwt_auth
+from .permissions import permissions_for
 from .deps import (
     get_admin_user,
     verify_admin_credentials,
@@ -93,7 +94,9 @@ async def get_current_admin(current_user: dict = Depends(get_admin_user)):
             "name": current_user.get("name", ""),
             "nickname": current_user.get("name", ""),
             "phone_number": current_user.get("phone_number"),
-            "role": current_user.get("role", "SUPER_ADMIN"),
+            "role": current_user.get("role"),
+            # 프론트 메뉴·라우트 가드가 같은 권한 표를 쓰도록 내려준다
+            "permissions": permissions_for(current_user.get("role")),
             "status": current_user.get("status", "ACTIVE"),
             "created_at": current_user.get("created_at"),
             "updated_at": current_user.get("updated_at"),

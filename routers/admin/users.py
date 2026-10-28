@@ -13,6 +13,7 @@ from schemas import UserResponse, PaginatedResponse, MembershipStatus
 import schemas
 from utils.datetime_utils import get_kst_now
 from .deps import get_admin_user
+from .pagination import BulkRequest, bulk_run
 
 logger = logging.getLogger(__name__)
 
@@ -430,6 +431,26 @@ async def get_user_handicap_history(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="사용자 핸디캡 이력 조회 중 오류가 발생했습니다",
         )
+
+
+@router.post("/users/bulk")
+async def bulk_admin_users(body: BulkRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """회원 일괄 활성화·비활성화 (API-061). 건별 독립 처리"""
+    target = {"activate": UserStatus.ACTIVE, "deactivate": UserStatus.DEACTIVATED}.get(body.action)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="action 은 activate 또는 deactivate 입니다")
+
+    def one(user_id: int) -> None:
+        user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="회원을 찾을 수 없습니다")
+        if user.status == UserStatus.DELETED:
+            raise ValueError("탈퇴한 회원은 상태를 바꿀 수 없습니다")
+        user.status = target
+        user.deactivated_at = get_kst_now() if target == UserStatus.DEACTIVATED else None
+        db.commit()
+
+    return bulk_run(body.ids, one)
 
 
 @router.post("/users", response_model=UserResponse)
