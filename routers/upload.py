@@ -8,6 +8,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from routers.auth import get_current_active_user
 from config import settings
+from models import User
 import logging
 import requests
 
@@ -39,7 +40,7 @@ def generate_filename(original_filename: str) -> str:
 @router.post("/")
 async def upload_file(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_active_user),
     share: str | None = Query(default=None, description="'link' 지정 시 anyone-with-link viewer 권한 부여"),
     folder_type: str = Query(default="club", description="폴더 타입: 'club' (클럽 등록), 'notice' (공지사항 첨부파일)")
 ):
@@ -183,7 +184,7 @@ async def upload_file(
 @router.get("/{file_id}")
 async def download_file(
     file_id: int,
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Google Drive 파일 다운로드 (프록시)"""
     try:
@@ -205,7 +206,7 @@ async def download_file(
 @router.delete("/{file_id}")
 async def delete_file(
     file_id: int,
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Google Drive 파일 삭제"""
     try:

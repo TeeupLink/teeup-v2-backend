@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 import logging
 
 from database import get_db
-from models import Plan
+from models import Plan, User
 from schemas import PlanType, BillingCycle
 from schemas import PlanResponse
 from routers.auth import get_current_user
@@ -21,11 +21,11 @@ async def get_plans(
     is_active: bool | None = None,
     plan_type: str | None = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """요금제 목록 조회"""
     try:
-        logger.info(f"요금제 목록 조회 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"요금제 목록 조회 시작 - user_id: {current_user.id}")
         
         query = db.query(Plan)
         
@@ -69,7 +69,7 @@ async def get_plans(
 async def get_plan(
     plan_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """요금제 상세 조회"""
     try:

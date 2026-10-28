@@ -304,7 +304,7 @@ async def update_user(
         user_id: int,
         user_data: UserUpdate,
         db: Session = Depends(get_db),
-        current_user: dict = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
 ):
     """사용자 정보 수정"""
     try:
@@ -932,16 +932,16 @@ async def mark_all_notifications_as_read(db: Session = Depends(get_db),
 
 
 @router.get("/notification-settings", response_model=NotificationSettingsResponse)
-async def get_notification_settings(db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def get_notification_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """알림 설정 조회"""
     try:
-        logger.info(f"알림 설정 조회 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"알림 설정 조회 시작 - user_id: {current_user.id}")
 
         from models import NotificationSettings
 
         # 알림 설정 조회
         settings = (db.query(NotificationSettings).filter(
-            NotificationSettings.user_id == current_user.get("id")).first())
+            NotificationSettings.user_id == current_user.id).first())
 
         # 설정이 없으면 기본값으로 생성
         if not settings:
@@ -951,7 +951,7 @@ async def get_notification_settings(db: Session = Depends(get_db), current_user:
             chars = string.ascii_lowercase + string.digits
             settings_id = "".join(secrets.choice(chars) for _ in range(20))
 
-            settings = NotificationSettings(id=settings_id, user_id=current_user.get("id"))
+            settings = NotificationSettings(id=settings_id, user_id=current_user.id)
             db.add(settings)
             db.commit()
             db.refresh(settings)
@@ -974,7 +974,7 @@ async def get_notification_settings(db: Session = Depends(get_db), current_user:
             updated_at=settings.updated_at,
         )
 
-        logger.info(f"알림 설정 조회 완료 - user_id: {current_user.get('id')}")
+        logger.info(f"알림 설정 조회 완료 - user_id: {current_user.id}")
         return settings_response
 
     except Exception as e:
@@ -989,17 +989,17 @@ async def get_notification_settings(db: Session = Depends(get_db), current_user:
 async def update_notification_settings(
         settings_data: NotificationSettingsUpdate,
         db: Session = Depends(get_db),
-        current_user: dict = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
 ):
     """알림 설정 수정"""
     try:
-        logger.info(f"알림 설정 수정 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"알림 설정 수정 시작 - user_id: {current_user.id}")
 
         from models import NotificationSettings
 
         # 알림 설정 조회
         settings = (db.query(NotificationSettings).filter(
-            NotificationSettings.user_id == current_user.get("id")).first())
+            NotificationSettings.user_id == current_user.id).first())
 
         # 설정이 없으면 생성
         if not settings:
@@ -1009,7 +1009,7 @@ async def update_notification_settings(
             chars = string.ascii_lowercase + string.digits
             settings_id = "".join(secrets.choice(chars) for _ in range(20))
 
-            settings = NotificationSettings(id=settings_id, user_id=current_user.get("id"))
+            settings = NotificationSettings(id=settings_id, user_id=current_user.id)
             db.add(settings)
 
         # 설정 업데이트
@@ -1038,7 +1038,7 @@ async def update_notification_settings(
             updated_at=settings.updated_at,
         )
 
-        logger.info(f"알림 설정 수정 완료 - user_id: {current_user.get('id')}")
+        logger.info(f"알림 설정 수정 완료 - user_id: {current_user.id}")
         return settings_response
 
     except Exception as e:
@@ -1209,7 +1209,7 @@ def _mask_payment_info(payment_method: str, payment_key: str = None) -> str:
 async def get_user(
         user_id: int,
         db: Session = Depends(get_db),
-        current_user: dict = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
 ):
     """사용자 상세 조회"""
     try:
@@ -1266,7 +1266,7 @@ async def get_user(
 async def get_user_handicap(
         user_id: int,
         db: Session = Depends(get_db),
-        current_user: dict = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
 ):
     """사용자 핸디캡 조회"""
     try:
@@ -1433,7 +1433,7 @@ async def update_user_handicap(
 async def calculate_handicap(
         user_id: int,
         db: Session = Depends(get_db),
-        current_user: dict = Depends(get_current_user),
+        current_user: User = Depends(get_current_user),
 ):
     """사용자 핸디캡 자동 계산 (평균타수 기반)"""
     try:

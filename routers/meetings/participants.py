@@ -33,7 +33,7 @@ def _normalize_birthdate(val: str | None) -> str | None:
 def get_meeting_guests(
     meeting_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user_allow_both),
+    current_user: User = Depends(get_current_user_allow_both),
 ):
     """모임 게스트 목록 조회 (guest_id가 있는 참가자만)"""
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
@@ -78,7 +78,7 @@ def add_guest_to_meeting_api(
     meeting_id: int,
     guest_data: GuestCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user_allow_both),
+    current_user: User = Depends(get_current_user_allow_both),
 ):
     """모임에 게스트 추가"""
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
@@ -154,7 +154,7 @@ def add_guest_to_meeting_api(
 def get_meeting_participants(user_id: int | None = Query(None, description="사용자 ID로 필터링"),
                              meeting_id: int | None = Query(None, description="모임 ID로 필터링"),
                              db: Session = Depends(get_db),
-                             current_user: dict = Depends(get_current_active_user)):
+                             current_user: User = Depends(get_current_active_user)):
     """모임 참가자 목록 조회"""
     try:
         query = db.query(MeetingParticipant)
@@ -212,7 +212,7 @@ def get_meeting_participants(user_id: int | None = Query(None, description="사�
 @router.get("/{participant_id}", response_model=dict)
 def get_meeting_participant(participant_id: int,
                             db: Session = Depends(get_db),
-                            current_user: dict = Depends(get_current_active_user)):
+                            current_user: User = Depends(get_current_active_user)):
     """모임 참가자 상세 조회"""
     try:
         participant = db.query(MeetingParticipant).filter(MeetingParticipant.id == participant_id).first()
