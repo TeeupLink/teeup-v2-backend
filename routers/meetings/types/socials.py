@@ -7,6 +7,7 @@ from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, case
 from datetime import date, datetime, time
+from utils import activity
 from utils.datetime_utils import get_kst_now
 import logging
 
@@ -641,6 +642,7 @@ async def join_social(
     except Exception as e:
         logger.error(f"모집 완료 단계 organizer 알림 전송 실패 - meeting_id: {meeting_id}, user_id: {current_user.id}, error: {str(e)}")
     
+    activity.log(current_user, "MEETING_JOIN", f"{getattr(meeting, 'name', '')} 참가", target_type="MEETING", target_id=meeting_id)
     return {"message": "소셜 모임에 참가했습니다."}
 
 @router.delete("/{meeting_id}/leave")
@@ -676,6 +678,7 @@ async def leave_social(
     db.delete(participant)
     db.commit()
     
+    activity.log(current_user, "MEETING_CANCEL", f"{getattr(meeting, 'name', '')} 참가 취소", target_type="MEETING", target_id=meeting_id)
     return {"message": "소셜 모임에서 탈퇴했습니다."}
 
 # =============================================================================

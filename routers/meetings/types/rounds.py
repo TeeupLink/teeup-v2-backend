@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_, case
 from datetime import date, datetime, time
 from decimal import Decimal
+from utils import activity
 from utils.datetime_utils import get_kst_now
 import logging
 
@@ -635,6 +636,7 @@ async def join_round(meeting_id: int,
         logger.error(
             f"모집 완료 단계 organizer 알림 전송 실패 - meeting_id: {meeting_id}, user_id: {current_user.id}, error: {str(e)}")
 
+    activity.log(current_user, "MEETING_JOIN", f"{getattr(meeting, 'name', '')} 참가", target_type="MEETING", target_id=meeting_id)
     return {"message": "라운딩에 참가했습니다."}
 
 
@@ -659,6 +661,7 @@ async def leave_round(meeting_id: int,
     db.delete(participant)
     db.commit()
 
+    activity.log(current_user, "MEETING_CANCEL", f"{getattr(meeting, 'name', '')} 참가 취소", target_type="MEETING", target_id=meeting_id)
     return {"message": "라운딩에서 탈퇴했습니다."}
 
 

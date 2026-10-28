@@ -4,6 +4,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from typing import Optional, Literal
 from datetime import datetime, timedelta, timezone
+from utils import activity
 from utils.datetime_utils import get_kst_now, get_kst_date
 import hashlib
 import re
@@ -502,6 +503,7 @@ async def login(
     if client_type == "web":
         set_auth_cookies(response, access_token, refresh_token, int(refresh_expire_delta.total_seconds()))
 
+    activity.log(user.id, "LOGIN", "로그인", meta={"provider": "LOCAL"})
     return LoginResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -655,6 +657,7 @@ async def withdraw_user(current_user: User = Depends(get_current_active_user), d
         # user.email = f"deleted_{user.id}_{int(get_kst_now().timestamp())}@deleted.com"
 
         db.commit()
+        activity.log(user.id, "WITHDRAW", "회원 탈퇴")
 
         return {"message": "회원탈퇴가 완료되었습니다.", "success": True}
 

@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import AdminAuditLog, Club, ClubMembership, MembershipStatus, User
 from services import admin_membership_service as svc
-from utils import audit
+from utils import activity, audit
 
 from .deps import get_admin_user
 from .pagination import BulkRequest, PageParams, apply_sort, bulk_run, paginate
@@ -128,6 +128,8 @@ async def bulk_join_requests(body: BulkRequest, db: Session = Depends(get_db), _
             db.rollback()
             raise
         after = {"status": "ACTIVE"} if action == "APPROVE" else None
+        if action == "APPROVE":
+            activity.log(before["user_id"], "CLUB_JOIN", f"{before['club_name']} 가입", target_type="CLUB", target_id=before["club_id"])
         audit.record(action, "CLUB_MEMBERSHIP", membership_id, before=before, after=after, reason=body.reason, meta={"bulk": True})
 
     return bulk_run(body.ids, one, audit_as=(action, "CLUB_MEMBERSHIP"))

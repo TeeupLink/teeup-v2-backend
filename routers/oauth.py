@@ -16,6 +16,7 @@ from models import User
 from schemas import GoogleOAuthBody, AppleOAuthBody, UserStatus, Provider
 from schemas import OAuthLoginRequest, OAuthCallbackRequest, OAuthUserInfo
 from services.push_token_service import sync_user_push_token
+from utils import activity
 from utils.google_oauth import google_oauth
 from utils.apple_oauth import apple_oauth
 from config import settings
@@ -115,6 +116,7 @@ async def google_oauth_login():
 
 #         # 사용자 생성 또는 조회
 #         user, is_new_user = await create_or_get_oauth_user(google_user, db)
+        _log_oauth_login(user, is_new_user, "GOOGLE")
 
 #         # JWT 토큰 생성
 #         jwt_payload = {
@@ -438,6 +440,7 @@ async def apple_oauth_callback_post(request: AppleOAuthBody,
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
         user, is_new_user = await create_or_get_oauth_user(apple_user, db, provider=Provider.APPLE)
+        _log_oauth_login(user, is_new_user, "APPLE")
 
         jwt_payload = {
             "id": user.id,
@@ -489,6 +492,12 @@ async def apple_oauth_callback_post(request: AppleOAuthBody,
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Apple 로그인 처리에 실패했습니다",
         )
+
+
+def _log_oauth_login(user: User, is_new_user: bool, provider: str) -> None:
+    if is_new_user:
+        activity.log(user.id, "SIGNUP", "회원 가입", meta={"provider": provider})
+    activity.log(user.id, "LOGIN", "로그인", meta={"provider": provider})
 
 
 async def create_or_get_oauth_user(oauth_user: OAuthUserInfo,

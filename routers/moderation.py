@@ -11,6 +11,7 @@ from models.enums import InquiryType, ReportTargetType
 from schemas import MessageResponse
 from schemas.moderation import (ContentReportCreate, ContentReportResponse,
                                 BlockedUsersResponse, BlockedUserItem)
+from utils import activity
 from routers.auth import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ async def create_report(payload: ContentReportCreate,
 
         db.commit()
         db.refresh(report)
+        activity.log(current_user, "REPORT", f"{label} 신고 ({reason_label})", target_type="REPORT", target_id=report.id)
         logger.info("Content report #%s by user %s: %s #%s (%s)",
                     report.id, current_user.id, payload.target_type.value,
                     payload.target_id, payload.reason.value)
