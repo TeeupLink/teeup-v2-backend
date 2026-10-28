@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from database import get_db
 from models import Admin, UserStatus, AdminRole
+from utils import audit
 from utils.jwt_auth import jwt_auth
 
 logger = logging.getLogger(__name__)
@@ -75,7 +76,7 @@ def get_admin_user(
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비활성화된 관리자 계정입니다")
         # 역할이 비어 있으면 권한 없음으로 다룬다 (예전에는 SUPER_ADMIN 으로 간주해 권한 상승 위험이 있었다)
         role = getattr(admin, "role", None)
-        return {
+        current = {
             "id": admin.id,
             "email": admin.email,
             "name": admin.name,
@@ -86,6 +87,8 @@ def get_admin_user(
             "created_at": admin.created_at.isoformat() if admin.created_at else None,
             "updated_at": admin.updated_at.isoformat() if admin.updated_at else None,
         }
+        audit.set_actor(current)
+        return current
     except HTTPException:
         raise
     except Exception as e:

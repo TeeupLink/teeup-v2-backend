@@ -11,6 +11,8 @@ from typing import Any
 from fastapi import HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from utils import audit
+
 PAGE_SIZES = (20, 50, 100)
 BULK_MAX = 100
 
@@ -64,8 +66,9 @@ class BulkRequest(BaseModel):
     status: str | None = None
 
 
-def bulk_run(ids: list[int], fn: Callable[[int], None]) -> dict:
-    """건별 독립 처리. fn 이 HTTPException 이나 ValueError 를 던지면 실패 목록에 담는다"""
+def bulk_run(ids: list[int], fn: Callable[[int], None], audit_as: tuple[str, str] | None = None) -> dict:
+    """건별 독립 처리. fn 이 HTTPException 이나 ValueError 를 던지면 실패 목록에 담는다.
+    audit_as=(action, target_type) 를 주면 실패 건도 감사 로그에 FAIL 로 남긴다 (성공 건은 fn 이 남긴다)"""
     succeeded: list[int] = []
     failed: list[dict] = []
     for i in dict.fromkeys(ids):
@@ -76,4 +79,8 @@ def bulk_run(ids: list[int], fn: Callable[[int], None]) -> dict:
             failed.append({"id": i, "message": str(e.detail)})
         except ValueError as e:
             failed.append({"id": i, "message": str(e)})
+        else:
+            continue
+        if audit_as:
+            audit.record(audit_as[0], audit_as[1], i, result="FAIL", meta={"bulk": True, "message": failed[-1]["message"]})
     return {"succeeded": succeeded, "failed": failed}

@@ -5,7 +5,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from models import Club, ClubMembership, ClubStatus, MembershipStatus
+from models import Club, ClubMembership, ClubStatus, MembershipStatus, User
 from utils.datetime_utils import get_kst_now
 
 
@@ -16,6 +16,22 @@ def find_pending(db: Session, membership_id: int) -> ClubMembership:
     if membership.status != MembershipStatus.PENDING:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 처리된 신청입니다")
     return membership
+
+
+def describe(db: Session, membership: ClubMembership) -> dict:
+    """감사 로그 before 스냅샷. 거절하면 행이 지워지므로 처리 이력 화면은 이 값으로 그린다"""
+    club = db.query(Club).filter(Club.id == membership.club_id).first()
+    user = db.query(User).filter(User.id == membership.user_id).first()
+    return {
+        "membership_id": membership.id,
+        "club_id": membership.club_id,
+        "club_name": club.name if club else None,
+        "user_id": membership.user_id,
+        "user_nickname": user.nickname if user else None,
+        "user_name": user.realname if user else None,
+        "status": membership.status.value if hasattr(membership.status, "value") else membership.status,
+        "requested_at": membership.created_at.isoformat() if membership.created_at else None,
+    }
 
 
 def approve(db: Session, membership: ClubMembership) -> None:

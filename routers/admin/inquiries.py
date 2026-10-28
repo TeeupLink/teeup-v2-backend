@@ -7,6 +7,7 @@ import logging
 
 from database import get_db
 from models import User
+from utils import audit
 from utils.datetime_utils import get_kst_now
 from .deps import get_admin_user
 from .pagination import BulkRequest, PageParams, apply_sort, bulk_run, paginate
@@ -96,11 +97,13 @@ async def bulk_admin_inquiries(body: BulkRequest, db: Session = Depends(get_db),
         inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
         if not inquiry:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="문의를 찾을 수 없습니다")
+        before = {"status": inquiry.status.value if inquiry.status else None}
         inquiry.status = new_status
         inquiry.updated_at = get_kst_now()
         db.commit()
+        audit.record("STATUS_CHANGE", "INQUIRY", inquiry_id, before=before, after={"status": new_status.value}, meta={"bulk": True})
 
-    return bulk_run(body.ids, one)
+    return bulk_run(body.ids, one, audit_as=("STATUS_CHANGE", "INQUIRY"))
 
 
 @router.get("/inquiries/{inquiry_id}")
@@ -169,8 +172,10 @@ async def update_admin_inquiry_status(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="문의를 찾을 수 없습니다")
         new_status = status_data.get("status")
         if new_status:
+            before = {"status": inquiry.status.value if inquiry.status else None}
             inquiry.status = InquiryStatus(new_status)
             db.commit()
+            audit.record("STATUS_CHANGE", "INQUIRY", inquiry_id, before=before, after={"status": inquiry.status.value})
         return {"message": "문의 상태가 성공적으로 업데이트되었습니다"}
     except HTTPException:
         raise
