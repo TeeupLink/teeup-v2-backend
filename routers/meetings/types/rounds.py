@@ -469,11 +469,12 @@ async def update_round(meeting_id: int,
 
     previous_status = meeting.status
 
-    # is_private 변경 여부 확인
-    was_private = meeting.is_private
-    is_private_changing = False
-    if meeting_data.is_private is not None and meeting_data.is_private != meeting.is_private:
-        is_private_changing = True
+    # 공개 → 비공개 전환 시 참가자를 어떻게 할지는 정해진 적이 없다.
+    # 생성 시에는 참가자를 1명 이상 명시해야 프라이빗 라운딩이 만들어지는데
+    # (routers/admin/meetings.py 의 is_private 분기), 수정으로 비공개로
+    # 바꾸는 경로에는 대응하는 규칙이 없다. RUN-26 에서 변수 두 개만
+    # 들어오고 후속 처리가 들어오지 않아 아무 일도 하지 않는 채로 남아
+    # 있었다. 규칙이 정해지면 여기에 넣는다.
 
     # 수정 가능한 필드들만 업데이트 (Enum 컬럼에는 모델 Enum 인스턴스로 저장)
     update_data = meeting_data.dict(exclude_unset=True)

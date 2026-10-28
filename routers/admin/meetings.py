@@ -576,17 +576,9 @@ async def get_admin_meeting_teams(
             members = []
             for tm in db.query(TeamMember).filter(TeamMember.team_id == team.id).all():
                 if tm.guest_id:
-                    p = db.query(MeetingParticipant).filter(
-                        MeetingParticipant.meeting_id == meeting_id,
-                        MeetingParticipant.guest_id == tm.guest_id,
-                    ).first()
                     g = db.query(Guest).filter(Guest.id == tm.guest_id).first()
                     members.append({"user_name": g.name if g else "게스트", "user_nickname": g.name if g else "게스트"})
                 elif tm.user_id:
-                    p = db.query(MeetingParticipant).filter(
-                        MeetingParticipant.meeting_id == meeting_id,
-                        MeetingParticipant.user_id == tm.user_id,
-                    ).first()
                     u = db.query(User).filter(User.id == tm.user_id).first()
                     members.append({"user_name": u.realname or u.nickname if u else "-", "user_nickname": u.nickname if u else "-"})
             result.append({

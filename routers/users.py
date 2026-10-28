@@ -775,7 +775,6 @@ async def get_my_notifications(
                           if hasattr(NotificationType(type_filter), "value") else str(NotificationType(type_filter)))
             query = query.filter(Notification.type == type_value)
 
-        total = query.count()
         notifications = (query.order_by(Notification.created_at.desc()).offset(offset).limit(limit).all())
 
         notification_responses = []
@@ -1072,7 +1071,6 @@ async def get_my_payments(
         if status_filter:
             query = query.filter(Payment.status == PaymentStatus(status_filter))
 
-        total = query.count()
         payments = (query.order_by(Payment.created_at.desc()).offset(offset).limit(limit).all())
 
         payment_responses = []

@@ -36,7 +36,6 @@ async def get_admin_notifications(
         if type_filter:
             type_val = NotificationType(type_filter).value if hasattr(NotificationType(type_filter), "value") else str(NotificationType(type_filter))
             query = query.filter(Notification.type == type_val)
-        total = query.count()
         notifications = query.order_by(desc(Notification.created_at)).offset(offset).limit(limit).all()
         notification_responses = []
         for n in notifications:

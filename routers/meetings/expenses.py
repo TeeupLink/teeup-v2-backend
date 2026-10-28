@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 from database import get_db
 from models import (
-    User, Club, ClubMembership, Meeting,
+    User, ClubMembership, Meeting,
     Expense, ExpenseItem, ExpenseItemParticipant, Guest, MeetingParticipant
 )
 from schemas import ClubRole
@@ -83,7 +83,6 @@ def _build_expense_response(expense: Expense, db: Session) -> ExpenseResponse:
                 participant_responses.append(_eip_to_response(eip, expense.id, db))
     total_participants = len(participant_responses) or 1
     amount_per_person = total_amount / total_participants if total_participants else 0
-    club = db.query(Club).filter(Club.id == expense.club_id).first()
     creator = db.query(User).filter(User.id == expense.created_by).first()
 
     notes_display = expense.notes
