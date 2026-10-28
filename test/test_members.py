@@ -67,7 +67,7 @@ class TestClubMembers:
                 decoded = base64.b64decode(payload)
                 payload_data = json.loads(decoded)
                 return payload_data.get('id')  # JWT에서 사용자 ID는 보통 'sub' 필드에 있음
-        except:
+        except Exception:
             pass
         
         # JWT 디코딩 실패 시 다른 방법 시도

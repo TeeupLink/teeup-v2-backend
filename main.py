@@ -16,10 +16,10 @@ if sys.stderr.encoding != "utf-8":
 # Set Korean locale
 try:
     locale.setlocale(locale.LC_ALL, "ko_KR.UTF-8")
-except:
+except locale.Error:
     try:
         locale.setlocale(locale.LC_ALL, "Korean_Korea.UTF-8")
-    except:
+    except locale.Error:
         pass
 
 from fastapi import FastAPI, Depends, Request

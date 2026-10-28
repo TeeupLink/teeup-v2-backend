@@ -56,6 +56,6 @@ def get_host_id() -> str:
         hash_value = hashlib.md5(hostname.encode()).hexdigest()
         # 해시값의 첫 2자리를 36진수로 변환
         return base36_encode(int(hash_value[:2], 16))[:2].zfill(2)
-    except:
+    except Exception:
         # 호스트명을 가져올 수 없는 경우 랜덤 값 사용
         return base36_encode(random.randint(0, 36**2 - 1))[:2].zfill(2)

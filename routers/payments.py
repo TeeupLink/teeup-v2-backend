@@ -123,7 +123,7 @@ async def confirm_payment(
                 error_data = response.json()
                 error_message = error_data.get('message', '알 수 없는 오류가 발생했습니다.')
                 error_code = error_data.get('code', 'UNKNOWN_ERROR')
-            except:
+            except Exception:
                 error_message = response.text
                 error_code = 'PARSE_ERROR'
             
@@ -227,7 +227,7 @@ async def get_payment(
                 error_data = response.json()
                 error_message = error_data.get('message', '알 수 없는 오류가 발생했습니다.')
                 error_code = error_data.get('code', 'UNKNOWN_ERROR')
-            except:
+            except Exception:
                 error_message = response.text
                 error_code = 'PARSE_ERROR'
             
@@ -326,7 +326,7 @@ async def cancel_payment(
                 error_data = response.json()
                 error_message = error_data.get('message', '알 수 없는 오류가 발생했습니다.')
                 error_code = error_data.get('code', 'UNKNOWN_ERROR')
-            except:
+            except Exception:
                 error_message = response.text
                 error_code = 'PARSE_ERROR'
             
