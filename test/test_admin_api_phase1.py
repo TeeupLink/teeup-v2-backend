@@ -280,3 +280,50 @@ def test_users_bulk_deactivate(env):
     db.expire_all()
     assert db.get(User, u1.id).status == UserStatus.DEACTIVATED
     assert db.get(User, u1.id).deactivated_at is not None
+
+
+# ---------------------------------------------------------------- 문의 답변·내부 메모
+
+
+def test_internal_memo_is_not_notified_and_hidden_from_app(env, monkeypatch):
+    db, as_role = env
+    u = user(db, 1)
+    q = Inquiry(user_id=u.id, title="로그인 안 돼요", content="b", type=InquiryType.ACCOUNT, status=InquiryStatus.PENDING)
+    db.add(q)
+    from models import Admin, AdminRole
+
+    db.add(Admin(id=1, email="a@teeup.run", password="x", name="김운영", role=AdminRole.SUPER_ADMIN))
+    db.commit()
+    qid, u_id = q.id, u.id
+
+    sent = []
+    import utils.notification_service as ns
+
+    monkeypatch.setattr(ns, "create_inquiry_response_notification", lambda **kw: sent.append(kw))
+    c = as_role("SUPPORT_ADMIN")
+
+    r = c.post(f"{A}/inquiries/{qid}/responses", json={"content": "비번 재설정 이력 있음", "is_internal": True})
+    assert r.status_code == 200
+    assert sent == []  # 내부 메모는 회원에게 알리지 않는다
+
+    r = c.post(f"{A}/inquiries/{qid}/responses", json={"content": "재설정 링크 보내드렸습니다", "set_status": "COMPLETED"})
+    assert r.json()["status"] == "COMPLETED"
+    assert [s["response_content"] for s in sent] == ["재설정 링크 보내드렸습니다"]
+
+    detail = c.get(f"{A}/inquiries/{qid}").json()
+    assert [(x["is_internal"], x["admin_name"]) for x in detail["responses"]] == [(True, "김운영"), (False, "김운영")]
+    assert detail["inquiry"]["status"] == "COMPLETED"
+
+    assert c.post(f"{A}/inquiries/{qid}/responses", json={"content": "  "}).status_code == 422
+
+    # 앱 API(회원 본인 조회)에는 내부 메모가 내려가지 않는다
+    from types import SimpleNamespace
+
+    from routers import inquiries as app_inquiries
+    from routers.auth import get_current_user
+
+    c.app.include_router(app_inquiries.router, prefix="/api/v1")
+    c.app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=u_id)
+    app_view = c.get(f"/api/v1/inquiries/{qid}").json()
+    assert [x["content"] for x in app_view["responses"]] == ["재설정 링크 보내드렸습니다"]
+    assert app_view["total_responses"] == 1

@@ -116,22 +116,33 @@ async def get_admin_inquiry_detail(
         inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
         if not inquiry:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="문의를 찾을 수 없습니다")
-        responses = db.query(InquiryResponse).filter(InquiryResponse.inquiry_id == inquiry_id).order_by(
-            InquiryResponse.created_at).all()
+        from models import Admin
+
+        responses = (
+            db.query(InquiryResponse, Admin.name)
+            .outerjoin(Admin, Admin.id == InquiryResponse.admin_id)
+            .filter(InquiryResponse.inquiry_id == inquiry_id)
+            .order_by(InquiryResponse.created_at, InquiryResponse.id)
+            .all()
+        )
         response_list = []
-        for r in responses:
+        for r, admin_name in responses:
             response_list.append({
                 "id": r.id,
                 "content": r.content,
                 "is_admin": True,
+                "is_internal": bool(r.is_internal),
+                "admin_name": admin_name,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             })
         return {
             "inquiry": {
                 "id": inquiry.id, "title": inquiry.title, "content": inquiry.content,
                 "type": inquiry.type.value, "status": inquiry.status.value,
+                "user_id": inquiry.user_id,
                 "user_nickname": inquiry.user.nickname if inquiry.user else "알 수 없음",
                 "created_at": inquiry.created_at.isoformat() if inquiry.created_at else None,
+                "updated_at": inquiry.updated_at.isoformat() if inquiry.updated_at else None,
             },
             "responses": response_list,
         }
@@ -276,25 +287,40 @@ async def create_admin_inquiry_response(
         inquiry = db.query(Inquiry).filter(Inquiry.id == inquiry_id).first()
         if not inquiry:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="문의를 찾을 수 없습니다")
+        from models import InquiryStatus
+
+        content = (response_data.get("content") or "").strip()
+        if not content:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="답변 내용을 입력해주세요")
+        is_internal = bool(response_data.get("is_internal", False))
+        set_status = response_data.get("set_status")
+        if set_status:
+            try:
+                inquiry.status = InquiryStatus(set_status)
+            except ValueError as e:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"알 수 없는 상태입니다: {set_status}") from e
+            inquiry.updated_at = get_kst_now()
         new_response = InquiryResponse(
             inquiry_id=inquiry_id,
             admin_id=current_user["id"],
-            content=response_data.get("content", ""),
-            is_internal=response_data.get("is_internal", False),
+            content=content,
+            is_internal=is_internal,
         )
         db.add(new_response)
         db.commit()
-        try:
-            from utils.notification_service import create_inquiry_response_notification
-            create_inquiry_response_notification(
-                db=db,
-                user_id=inquiry.user_id,
-                inquiry_title=inquiry.title,
-                response_content=response_data.get("content", ""),
-            )
-        except Exception as e:
-            logger.error(f"문의 답변 알림 전송 실패: {str(e)}")
-        return {"message": "답변이 성공적으로 생성되었습니다"}
+        # 내부 메모는 운영자끼리 보는 기록이다. 회원에게 알림을 보내면 메모 내용이 그대로 노출된다
+        if not is_internal:
+            try:
+                from utils.notification_service import create_inquiry_response_notification
+                create_inquiry_response_notification(
+                    db=db,
+                    user_id=inquiry.user_id,
+                    inquiry_title=inquiry.title,
+                    response_content=content,
+                )
+            except Exception as e:
+                logger.error(f"문의 답변 알림 전송 실패: {str(e)}")
+        return {"message": "답변이 성공적으로 생성되었습니다", "id": new_response.id, "status": inquiry.status.value}
     except HTTPException:
         raise
     except Exception as e:
