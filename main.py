@@ -282,7 +282,13 @@ async def health_check_db(db: Session = Depends(get_db)):
         return {"status": "healthy", "database": "connected"}
     except Exception as e:
         logger.error(f"Database health check failed: {e}")
-        return {"status": "unhealthy", "database": "disconnected", "error": str(e)}
+        # 200 으로 답하면 Cloud Run 과 모니터링이 정상으로 본다. 503 이어야
+        # 장애가 잡힌다. 예외 문자열에는 DB 호스트가 들어 있고 이 경로는
+        # 인증이 없으므로 응답에 넣지 않고 로그에만 남긴다.
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "database": "disconnected"},
+        )
 
 
 @app.on_event("startup")
