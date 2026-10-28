@@ -8,6 +8,7 @@ SUPER_ADMIN 은 항상 write. 역할이 비어 있으면 아무 권한도 없다
 from fastapi import Depends, HTTPException, Request, status
 
 from models import AdminRole
+from utils import audit
 
 from .deps import get_admin_user
 
@@ -72,6 +73,7 @@ def require_resource(resource: str):
         raise ValueError(f"알 수 없는 권한 영역: {resource}")
 
     def _check(request: Request, current_user: dict = Depends(get_admin_user)) -> dict:
+        audit.set_actor(current_user)
         need = READ if request.method in _READ_METHODS else WRITE
         if not can(current_user.get("role"), resource, need):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="이 기능에 대한 접근 권한이 없습니다.")

@@ -29,6 +29,7 @@ from .meetings import router as meetings_router
 from .faq import router as faq_router
 from .join_requests import router as join_requests_router
 from .lookup import router as lookup_router
+from .audit_logs import router as audit_logs_router
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -51,6 +52,7 @@ router.include_router(faq_router, dependencies=[Depends(require_resource("conten
 router.include_router(terms_router, dependencies=[Depends(require_resource("content"))])
 router.include_router(inquiries_router, dependencies=[Depends(require_resource("inquiries"))])
 router.include_router(payments_router, dependencies=[Depends(require_resource("payments"))])
+router.include_router(audit_logs_router, dependencies=[Depends(require_resource("auditLogs"))])
 
 # 대시보드/업로드/알림/선택용 조회: 모든 역할 접근 가능 (항목별 범위는 각 엔드포인트가 거른다)
 router.include_router(dashboard_router)

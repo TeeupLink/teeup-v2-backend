@@ -61,6 +61,7 @@ from routers.meetings import (
     rounds_router,
     socials_router,
 )
+from utils.audit import AuditMiddleware
 from utils.csrf_protection import CSRFProtectionMiddleware
 
 # from utils.rate_limiter import RateLimiterMiddleware  # 개발 환경에서는 비활성화
@@ -167,6 +168,9 @@ class HttpsLocationMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(RawRequestLogMiddleware)
+
+# 관리자 감사 로그 (backend #49). CSRF·CORS 안쪽에서 돌아 그 단계에서 막힌 요청은 남기지 않는다
+app.add_middleware(AuditMiddleware)
 
 # CORS 설정 - 가장 먼저 추가해야 함 (미들웨어는 역순으로 실행됨)
 # 개발 환경을 위한 localhost 기본값 (React Native: 8081, Admin: 3003)

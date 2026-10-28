@@ -10,6 +10,8 @@ from datetime import datetime
 from database import get_db
 from models import Club, ClubMembership, ClubRegion, User, ClubStatus, ClubRole
 from schemas import MembershipStatus
+from services import admin_membership_service as membership_svc
+from utils import audit
 from utils.datetime_utils import get_kst_now
 from utils.display_id_generator import generate_club_display_id
 from utils.region import validate_gungu_codes
@@ -1171,6 +1173,8 @@ async def approve_admin_club_membership(club_id: str,
         if not membership:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입 신청을 찾을 수 없습니다")
 
+        before = membership_svc.describe(db, membership)
+
         # 가입 승인
         membership.status = MembershipStatus.ACTIVE
         membership.updated_at = get_kst_now()
@@ -1180,6 +1184,7 @@ async def approve_admin_club_membership(club_id: str,
         club.updated_at = get_kst_now()
 
         db.commit()
+        audit.record("APPROVE", "CLUB_MEMBERSHIP", membership.id, before=before, after={"status": "ACTIVE"})
 
         # status 값 추출 (Enum인지 문자열인지 확인)
         status_value = membership.status.value if hasattr(membership.status, 'value') else str(membership.status)
@@ -1225,9 +1230,12 @@ async def reject_admin_club_membership(club_id: str,
         if not membership:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="가입 신청을 찾을 수 없습니다")
 
+        before = membership_svc.describe(db, membership)
+
         # 가입 거절 (멤버십 삭제)
         db.delete(membership)
         db.commit()
+        audit.record("REJECT", "CLUB_MEMBERSHIP", before["membership_id"], before=before)
 
         return {"message": "클럽 가입이 거절되었습니다", "user_id": user_id}
 

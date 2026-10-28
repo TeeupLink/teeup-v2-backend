@@ -33,6 +33,9 @@ from .inquiry import Inquiry, InquiryResponse
 # 신고 / 차단 모델
 from .moderation import ContentReport, UserBlock
 
+# 감사 로그 (backend #49)
+from .audit import AdminAuditLog, AuditMonthlyReview
+
 # 기타 모델
 from .notification import Notification
 from .device_token import UserDeviceToken
@@ -77,6 +80,8 @@ __all__ = [
     "RefreshTokenBlacklist",
     # Admin
     "Admin",
+    "AdminAuditLog",
+    "AuditMonthlyReview",
     # Club
     "Club",
     "ClubMembership",
