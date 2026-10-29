@@ -230,6 +230,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin-meetings"])
 
 
+def _expense_owner(db: Session, meeting) -> int:
+    """정산(Expense.created_by, users FK) 작성자로 쓸 회원 id.
+    관리자 id 는 admins 테이블 번호라 users 에 넣으면 엉뚱한 회원이 된다 — 절대 쓰지 않는다.
+    순서: 모임 개설자 → 확정 개설자(ORGANIZER) → 첫 확정 회원 참가자 → 클럽 리더"""
+    from models import ClubMembership, ClubRole, MeetingParticipant
+    from schemas import MeetingParticipantRole, MeetingParticipantStatus
+
+    if meeting.created_by:
+        return meeting.created_by
+    base = db.query(MeetingParticipant).filter(MeetingParticipant.meeting_id == meeting.id,
+                                               MeetingParticipant.status == MeetingParticipantStatus.CONFIRMED,
+                                               MeetingParticipant.user_id.isnot(None))
+    p = base.filter(MeetingParticipant.role == MeetingParticipantRole.ORGANIZER).first() or base.first()
+    if p:
+        return p.user_id
+    leader = db.query(ClubMembership).filter(ClubMembership.club_id == meeting.club_id, ClubMembership.role == ClubRole.LEADER).first()
+    if leader:
+        return leader.user_id
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="정산 작성자로 지정할 회원이 없습니다. 확정 참가자를 먼저 추가해주세요.")
+
+
 class MeetingStatsResponse(BaseModel):
     total_meetings: int
     active_meetings: int
@@ -1377,13 +1398,7 @@ async def create_admin_meeting_expense(
         category = d.get("category") or ""
         notes_val = _json.dumps({"category": category, "settlement_type": settlement_type}) if (category or settlement_type != "EQUAL_SPLIT") else (category or None)
 
-        created_by = meeting.created_by or current_user.get("id")
-        if not created_by:
-            first_p = db.query(MeetingParticipant).filter(
-                MeetingParticipant.meeting_id == meeting_id,
-                MeetingParticipant.user_id.isnot(None)
-            ).first()
-            created_by = first_p.user_id if first_p else current_user.get("id")
+        created_by = _expense_owner(db, meeting)
 
         expense = Expense(
             title=title,
@@ -1621,24 +1636,7 @@ async def create_admin_rounding_settlement(
         if meeting.settlement_confirmed:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="정산이 이미 확정되어 수정할 수 없습니다.")
 
-        created_by_user_id = meeting.created_by
-        if not created_by_user_id:
-            organizer = db.query(MeetingParticipant).filter(
-                MeetingParticipant.meeting_id == meeting_id,
-                MeetingParticipant.role == MeetingParticipantRole.ORGANIZER,
-                MeetingParticipant.status == MeetingParticipantStatus.CONFIRMED
-            ).first()
-            if organizer and organizer.user_id:
-                created_by_user_id = organizer.user_id
-            else:
-                first_p = db.query(MeetingParticipant).filter(
-                    MeetingParticipant.meeting_id == meeting_id,
-                    MeetingParticipant.status == MeetingParticipantStatus.CONFIRMED,
-                    MeetingParticipant.user_id.isnot(None)
-                ).first()
-                created_by_user_id = first_p.user_id if first_p else None
-        if not created_by_user_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="정산 생성자(user_id)를 찾을 수 없습니다. 참가자를 추가해주세요.")
+        created_by_user_id = _expense_owner(db, meeting)
 
         total_cost = Decimal(str(settlement_data.get('total_cost', 0)))
         green_fee = Decimal(str(settlement_data.get('green_fee', 0)))
@@ -2069,13 +2067,7 @@ async def create_admin_social_settlement(
             db.delete(existing)
             db.flush()
 
-        created_by = meeting.created_by or current_user.get("id")
-        if not created_by:
-            first_p = db.query(MeetingParticipant).filter(
-                MeetingParticipant.meeting_id == meeting_id,
-                MeetingParticipant.user_id.isnot(None),
-            ).first()
-            created_by = first_p.user_id if first_p else current_user.get("id")
+        created_by = _expense_owner(db, meeting)
 
         expense = Expense(
             title=f"{meeting.name} 소셜 모임 정산",
@@ -2269,8 +2261,6 @@ async def create_admin_rounding_meeting(meeting_data: dict,
         if not club:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다.")
 
-        admin_uid = current_user.get('id')
-
         def _parse_dt(v):
             if v is None or v == '':
                 return None
@@ -2436,7 +2426,7 @@ async def create_admin_rounding_meeting(meeting_data: dict,
             club_id=club_id,
             status=MeetingStatus.SCHEDULED,
             is_private=is_private,
-            created_by=admin_uid,
+            created_by=None,  # 관리자는 회원이 아니다 (admins.id ≠ users.id)
         )
 
         db.add(meeting)
@@ -2502,15 +2492,6 @@ async def create_admin_rounding_meeting(meeting_data: dict,
                         participant_count += 1
                     except ValueError as ve:
                         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
-        else:
-            participant = MeetingParticipant(
-                meeting_id=meeting.id,
-                user_id=admin_uid,
-                participant_type=ParticipantType.USER,
-            )
-            db.add(participant)
-            db.commit()
-            participant_count = 1
 
         return {
             "id": meeting.id,
@@ -2593,20 +2574,12 @@ async def create_admin_event_meeting(meeting_data: dict,
                           social_type=social_type,
                           club_id=meeting_data.get('club_id'),
                           status=MeetingStatus.SCHEDULED,
-                          created_by=current_user['id'])
+                          created_by=None)  # 관리자는 회원이 아니다 (admins.id ≠ users.id)
 
         db.add(meeting)
         db.commit()
         db.refresh(meeting)
 
-        # 관리자를 참가자로 자동 추가
-        participant = MeetingParticipant(
-            meeting_id=meeting.id,
-            user_id=current_user['id'],
-            participant_type=ParticipantType.USER
-        )
-        db.add(participant)
-        db.commit()
 
         return {
             "id":
