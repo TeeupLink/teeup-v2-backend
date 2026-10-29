@@ -118,31 +118,6 @@ app = FastAPI(
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
-class RawRequestLogMiddleware(BaseHTTPMiddleware):
-
-    async def dispatch(self, request: Request, call_next):
-        body = await request.body()
-
-        request_dict = {
-            "method": request.method,
-            "url": str(request.url),
-            "client": request.client.host if request.client else None,
-            "headers": dict(request.headers),
-            "body": body.decode("utf-8", errors="ignore"),
-        }
-
-        print("==== INCOMING REQUEST ====")
-        print(request_dict)
-        print("==========================")
-
-        async def receive():
-            return {"type": "http.request", "body": body}
-
-        request._receive = receive  # 🔥 핵심
-
-        return await call_next(request)
-
-
 class HttpsLocationMiddleware(BaseHTTPMiddleware):
     """리다이렉트 Location 을 https 로 올린다.
 
@@ -168,7 +143,6 @@ class HttpsLocationMiddleware(BaseHTTPMiddleware):
         return response
 
 
-app.add_middleware(RawRequestLogMiddleware)
 
 # 관리자 감사 로그 (backend #49). CSRF·CORS 안쪽에서 돌아 그 단계에서 막힌 요청은 남기지 않는다
 app.add_middleware(AuditMiddleware)
