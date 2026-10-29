@@ -157,7 +157,7 @@ def reset_team_formation_confirmation(meeting: Meeting, db: Session) -> bool:
 @router.post("/{meeting_id}/apply")
 async def apply_to_meeting(meeting_id: int,
                            db: Session = Depends(get_db),
-                           current_user: dict = Depends(get_current_active_user)):
+                           current_user: User = Depends(get_current_active_user)):
     """모임 참가 (일반회원/리더/매니저 구분없이)"""
     try:
         # 모임 존재 확인
@@ -294,7 +294,7 @@ async def add_round_guest(meeting_id: int,
 @router.post("/{meeting_id}/close-application")
 async def close_application_early(meeting_id: int,
                                   db: Session = Depends(get_db),
-                                  current_user: dict = Depends(get_current_active_user)):
+                                  current_user: User = Depends(get_current_active_user)):
     """참가 신청 조기 마감 (매니저/리더만 가능)"""
     try:
         logger.info(f"참가 신청 조기 마감 요청 - meeting_id: {meeting_id}, user_id: {current_user.id}")
@@ -426,7 +426,7 @@ async def get_application_status(meeting_id: int,
 @router.post("/{meeting_id}/start-team-formation")
 async def start_team_formation(meeting_id: int,
                                db: Session = Depends(get_db),
-                               current_user: dict = Depends(get_current_active_user)):
+                               current_user: User = Depends(get_current_active_user)):
     """팀 편성 시작 (모집마감 후에만 가능)"""
     try:
         # 모임 존재 확인
@@ -487,7 +487,7 @@ async def start_team_formation(meeting_id: int,
 async def auto_form_teams(meeting_id: int,
                           formation_request: TeamFormationRequest,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(get_current_active_user)):
+                          current_user: User = Depends(get_current_active_user)):
     """자동 팀 편성 (매니저/리더만 가능)"""
     try:
         # 모임 존재 확인
@@ -648,7 +648,7 @@ async def auto_form_teams(meeting_id: int,
 @router.post("/{meeting_id}/teams/confirm")
 async def confirm_team_formation(meeting_id: int,
                                  db: Session = Depends(get_db),
-                                 current_user: dict = Depends(get_current_active_user)):
+                                 current_user: User = Depends(get_current_active_user)):
     """팀 편성 확정 (매니저/리더만 가능)"""
     try:
         # 모임 존재 확인
@@ -712,7 +712,7 @@ async def add_team_member_workflow(meeting_id: int,
                                    team_id: int,
                                    member_data: TeamMemberAddRequest = Body(...),
                                    db: Session = Depends(get_db),
-                                   current_user: dict = Depends(get_current_active_user)):
+                                   current_user: User = Depends(get_current_active_user)):
     """팀 멤버 추가 (POST /meetings/... 경로)"""
     from routers.meetings.types.rounds import add_team_member
     return await add_team_member(meeting_id, team_id, member_data, current_user, db)
@@ -723,7 +723,7 @@ async def confirm_team_member(meeting_id: int,
                               team_id: int,
                               member_id: int,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(get_current_active_user)):
+                              current_user: User = Depends(get_current_active_user)):
     """팀 편성 확인 완료 (참가자 본인만 가능)"""
     try:
         # 팀 멤버 조회
@@ -874,7 +874,7 @@ async def complete_rounding(meeting_id: int,
 @router.post("/{meeting_id}/complete")
 async def complete_meeting(meeting_id: int,
                            db: Session = Depends(get_db),
-                           current_user: dict = Depends(get_current_active_user)):
+                           current_user: User = Depends(get_current_active_user)):
     """모임 완료 체크 (매니저/리더만 가능)"""
     try:
         # 모임 존재 확인
@@ -918,7 +918,7 @@ async def complete_meeting(meeting_id: int,
 @router.get("/{meeting_id}/results")
 async def get_meeting_results(meeting_id: int,
                               db: Session = Depends(get_db),
-                              current_user: dict = Depends(get_current_user)):
+                              current_user: User = Depends(get_current_user)):
     """모임별 전체 성적 조회"""
     try:
         # 모임 존재 확인
@@ -969,7 +969,7 @@ async def get_meeting_results(meeting_id: int,
 @router.post("/{meeting_id}/settlement/confirm")
 async def confirm_settlement(meeting_id: int,
                              db: Session = Depends(get_db),
-                             current_user: dict = Depends(get_current_active_user)):
+                             current_user: User = Depends(get_current_active_user)):
     """정산 확정 (매니저/리더만 가능)"""
     try:
         # 모임 존재 확인

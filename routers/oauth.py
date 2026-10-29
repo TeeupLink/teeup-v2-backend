@@ -538,7 +538,7 @@ async def create_or_get_oauth_user(oauth_user: OAuthUserInfo,
                 try:
                     user_status_str = (existing_user.status.value
                                        if hasattr(existing_user.status, "value") else str(existing_user.status))
-                except:
+                except Exception:
                     user_status_str = str(existing_user.status)
 
                 logger.info(f"OAuth 사용자 상태 확인: {existing_user.email}, status={user_status_str}")

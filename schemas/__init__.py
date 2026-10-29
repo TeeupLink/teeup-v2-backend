@@ -240,6 +240,5 @@ __all__ = [
 
 # Forward reference 해결을 위해 model_rebuild 호출
 # 모든 모듈이 로드된 후 실행
-from .team import TeamFormationResponse
 
 TeamFormationResponse.model_rebuild()

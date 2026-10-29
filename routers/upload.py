@@ -8,6 +8,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Query
 from fastapi.responses import StreamingResponse
 from routers.auth import get_current_active_user
 from config import settings
+from models import User
 import logging
 import requests
 
@@ -36,10 +37,13 @@ def generate_filename(original_filename: str) -> str:
     return f"{name}-{date_str}{ext}"
 
 
+# 이 라우터의 엔드포인트는 일부러 async 가 아니다. Google Drive 를
+# requests(블로킹) 로 호출하므로 async 안에서 돌리면 이벤트 루프가 멈춘다.
+# 동기 엔드포인트는 FastAPI 가 스레드풀에서 실행하므로 루프를 막지 않는다.
 @router.post("/")
-async def upload_file(
+def upload_file(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_active_user),
+    current_user: User = Depends(get_current_active_user),
     share: str | None = Query(default=None, description="'link' 지정 시 anyone-with-link viewer 권한 부여"),
     folder_type: str = Query(default="club", description="폴더 타입: 'club' (클럽 등록), 'notice' (공지사항 첨부파일)")
 ):
@@ -48,7 +52,7 @@ async def upload_file(
         if not validate_file(file):
             raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다. PNG, JPG, JPEG, PDF만 업로드 가능합니다.")
 
-        file_bytes = await file.read()
+        file_bytes = file.file.read()
         if len(file_bytes) > MAX_FILE_SIZE:
             raise HTTPException(status_code=400, detail="파일 크기가 10MB를 초과합니다.")
 
@@ -181,9 +185,9 @@ async def upload_file(
 
 
 @router.get("/{file_id}")
-async def download_file(
+def download_file(
     file_id: int,
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Google Drive 파일 다운로드 (프록시)"""
     try:
@@ -203,9 +207,9 @@ async def download_file(
 
 
 @router.delete("/{file_id}")
-async def delete_file(
+def delete_file(
     file_id: int,
-    current_user: dict = Depends(get_current_active_user)
+    current_user: User = Depends(get_current_active_user)
 ):
     """Google Drive 파일 삭제"""
     try:

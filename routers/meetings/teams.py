@@ -53,7 +53,7 @@ def check_team_management_permission(user_id: int, meeting: Meeting, db: Session
 
 
 @router.get("/", response_model=list[TeamResponse])
-async def get_teams(meeting_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def get_teams(meeting_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """팀 목록 조회"""
     try:
         print(f"팀 목록 조회 시작 - meeting_id: {meeting_id}")
@@ -232,7 +232,7 @@ async def get_teams(meeting_id: int, db: Session = Depends(get_db), current_user
 async def create_team(team_data: TeamCreate,
                       meeting_id: int,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(get_current_user)):
+                      current_user: User = Depends(get_current_user)):
     """팀 생성"""
     print("=== 팀 생성 엔드포인트 호출됨 ===")
     print(f"meeting_id: {meeting_id}")
@@ -240,7 +240,7 @@ async def create_team(team_data: TeamCreate,
     print(f"current_user: {current_user}")
 
     try:
-        print(f"팀 생성 시작 - meeting_id: {meeting_id}, user_id: {current_user.get('id')}")
+        print(f"팀 생성 시작 - meeting_id: {meeting_id}, user_id: {current_user.id}")
 
         # 모임 존재 확인
         meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
@@ -258,8 +258,8 @@ async def create_team(team_data: TeamCreate,
         print(f"모임 찾음: {meeting.name}")
 
         # 권한 확인 (임시 비활성화)
-        if not check_team_management_permission(current_user.get('id'), meeting, db):
-            print(f"권한 없음: user_id={current_user.get('id')}, meeting_id={meeting_id}")
+        if not check_team_management_permission(current_user.id, meeting, db):
+            print(f"권한 없음: user_id={current_user.id}, meeting_id={meeting_id}")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="팀 관리는 리더/매니저만 가능합니다")
 
         print("권한 확인 통과 (임시 비활성화)")
@@ -317,7 +317,7 @@ async def create_team(team_data: TeamCreate,
 
 
 @router.get("/{team_id}", response_model=TeamResponse)
-async def get_team(team_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def get_team(team_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """팀 상세 조회"""
     logger.info(f"팀 상세 조회 시작 - team_id: {team_id}, current_user: {current_user}")
     user_id = current_user.get('user_id') if isinstance(current_user, dict) else getattr(current_user, 'id', None)
@@ -405,7 +405,7 @@ async def get_team(team_id: int, db: Session = Depends(get_db), current_user: di
 async def update_team(team_id: int,
                       team_data: TeamUpdate,
                       db: Session = Depends(get_db),
-                      current_user: dict = Depends(get_current_user)):
+                      current_user: User = Depends(get_current_user)):
     """팀 정보 수정"""
     # 팀 조회
     team = db.query(Team).options(joinedload(Team.meeting)).filter(Team.id == team_id).first()
@@ -420,7 +420,7 @@ async def update_team(team_id: int,
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="티업시간 이후에는 팀 편성을 수정할 수 없습니다")
 
     # 권한 확인
-    if not check_team_management_permission(current_user["user_id"], team.meeting, db):
+    if not check_team_management_permission(current_user.id, team.meeting, db):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="팀 관리는 리더/매니저만 가능합니다")
 
     # 팀 정보 업데이트
@@ -492,10 +492,10 @@ async def update_team(team_id: int,
 
 
 @router.delete("/{team_id}", response_model=MessageResponse)
-async def delete_team(team_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+async def delete_team(team_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """팀 삭제"""
     try:
-        logger.info(f"팀 삭제 시작 - team_id: {team_id}, user_id: {current_user.get('user_id')}")
+        logger.info(f"팀 삭제 시작 - team_id: {team_id}, user_id: {current_user.id}")
 
         # 팀 조회
         team = db.query(Team).options(joinedload(Team.meeting)).filter(Team.id == team_id).first()
@@ -513,8 +513,8 @@ async def delete_team(team_id: int, db: Session = Depends(get_db), current_user:
         logger.info(f"팀 정보 - id: {team.id}, name: {team.name}, meeting_id: {team.meeting_id}")
 
         # 권한 확인
-        if not check_team_management_permission(current_user["user_id"], team.meeting, db):
-            logger.warning(f"팀 삭제 권한 없음 - team_id: {team_id}, user_id: {current_user.get('user_id')}")
+        if not check_team_management_permission(current_user.id, team.meeting, db):
+            logger.warning(f"팀 삭제 권한 없음 - team_id: {team_id}, user_id: {current_user.id}")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="팀 관리는 리더/매니저만 가능합니다")
 
         # 팀 멤버 수 확인
@@ -542,7 +542,7 @@ async def delete_team(team_id: int, db: Session = Depends(get_db), current_user:
 async def auto_form_teams(meeting_id: int,
                           formation_request: TeamFormationRequest,
                           db: Session = Depends(get_db),
-                          current_user: dict = Depends(get_current_user)):
+                          current_user: User = Depends(get_current_user)):
     """자동 팀 편성"""
     # 모임 존재 확인
     meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()

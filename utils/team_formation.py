@@ -65,7 +65,6 @@ class TeamFormationEngine:
         balance_score = max(0, 100 - handicap_std * 2)  # 표준편차가 낮을수록 높은 점수
 
         # 2. 페이스 적합도 점수 (0-100)
-        pace_scores = {'빠름': 3, '보통': 2, '느림': 1}
         pace_variance = len(set(m.pace_preference or '보통' for m in team_members))
         pace_score = max(0, 100 - pace_variance * 20)  # 페이스가 비슷할수록 높은 점수
 

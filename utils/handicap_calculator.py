@@ -29,47 +29,6 @@ def calculate_handicap_from_average_score(average_score: float) -> Decimal:
     return Decimal(str(round(handicap, 1)))
 
 
-# def calculate_handicap_from_average_score(average_score: float) -> int:
-#     """
-#     평균 타수 기반 핸디캡 인덱스(int) 계산
-
-#     Args:
-#         average_score: 평균 타수
-
-#     Returns:
-#         핸디캡 인덱스 (정수)
-#     """
-#     return int(calculate_handicap_from_average_score(average_score))
-
-
-def calculate_handicap_from_average_score(average_score: float) -> Decimal:
-    """
-    평균 타수 기반 핸디캡 계산 공통 함수
-
-    Args:
-        average_score: 평균 타수
-
-    Returns:
-        핸디캡 (0~72 범위로 클램프, 소수점 첫째 자리까지)
-    """
-    handicap = float(average_score) - 72.0
-    handicap = max(0.0, min(72.0, handicap))
-    return Decimal(str(round(handicap, 1)))
-
-
-# def calculate_handicap_from_average_score(average_score: float) -> int:
-#     """
-#     평균 타수 기반 핸디캡 인덱스(int) 계산
-
-#     Args:
-#         average_score: 평균 타수
-
-#     Returns:
-#         핸디캡 인덱스 (정수)
-#     """
-#     return int(calculate_handicap_from_average_score(average_score))
-
-
 def get_recent_scores(db: Session, user_id: int, count: int = 10) -> list[UserScoreHistory]:
     """
     최근 N경기 스코어 조회

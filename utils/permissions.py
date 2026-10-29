@@ -99,7 +99,7 @@ def require_admin():
     from routers.admin import get_admin_user
     return get_admin_user
 
-def require_user_or_admin(target_user_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+def require_user_or_admin(target_user_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """사용자 본인 또는 관리자 권한 필요"""
     if not PermissionChecker.check_user_permission(current_user, target_user_id, db):
         raise HTTPException(
@@ -108,7 +108,7 @@ def require_user_or_admin(target_user_id: int, current_user: dict = Depends(get_
         )
     return current_user
 
-def require_club_member_or_admin(club_id: int, current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+def require_club_member_or_admin(club_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """클럽 멤버 또는 관리자 권한 필요"""
     if not PermissionChecker.check_club_permission(current_user, club_id, db):
         raise HTTPException(

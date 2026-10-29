@@ -1,13 +1,17 @@
 import json
+import logging
 import os
-import time
+from typing import Any
 
+import jwt
 import requests
+from fastapi import HTTPException, status
+from jwt import PyJWKClient
 
 from config import settings
 from schemas.oauth import OAuthUserInfo
-import jwt
-from jwt import PyJWKClient
+
+logger = logging.getLogger(__name__)
 
 
 class GoogleOAuthError(Exception):
@@ -106,17 +110,6 @@ def get_mime_type(file_ext: str) -> str:
     return "application/octet-stream"
 
 
-"""
-Google OAuth 인증 유틸리티
-"""
-import json
-import logging
-from typing import Any
-from fastapi import HTTPException, status
-import requests
-from config import settings
-
-logger = logging.getLogger(__name__)
 
 # class GoogleUserInfo(TypedDict, total=False):
 #     id: str

@@ -33,14 +33,14 @@ def calculate_next_billing_date(billing_cycle: str, current_date: datetime = Non
 @router.get("/", response_model=list[SubscriptionResponse])
 async def get_subscriptions(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """구독 목록 조회"""
     try:
-        logger.info(f"구독 목록 조회 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"구독 목록 조회 시작 - user_id: {current_user.id}")
         
         subscriptions = db.query(Subscription).filter(
-            Subscription.user_id == current_user.get('id')
+            Subscription.user_id == current_user.id
         ).order_by(Subscription.created_at.desc()).all()
         
         subscription_responses = []
@@ -74,7 +74,7 @@ async def get_subscriptions(
 async def get_subscription(
     subscription_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """구독 상세 조회"""
     try:
@@ -82,7 +82,7 @@ async def get_subscription(
         
         subscription = db.query(Subscription).filter(
             Subscription.id == subscription_id,
-            Subscription.user_id == current_user.get('id')
+            Subscription.user_id == current_user.id
         ).first()
         
         if not subscription:
@@ -121,11 +121,11 @@ async def get_subscription(
 async def create_subscription(
     subscription_data: SubscriptionCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """구독 생성"""
     try:
-        logger.info(f"구독 생성 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"구독 생성 시작 - user_id: {current_user.id}")
         
         # 요금제 조회
         plan = db.query(Plan).filter(Plan.id == subscription_data.plan_id).first()
@@ -143,7 +143,7 @@ async def create_subscription(
         
         # 기존 활성 구독 확인
         existing_subscription = db.query(Subscription).filter(
-            Subscription.user_id == current_user.get('id'),
+            Subscription.user_id == current_user.id,
             Subscription.status == SubscriptionStatus.ACTIVE
         ).first()
         
@@ -164,7 +164,7 @@ async def create_subscription(
         
         subscription = Subscription(
             id=subscription_id,
-            user_id=current_user.get('id'),
+            user_id=current_user.id,
             plan_id=subscription_data.plan_id,
             status=SubscriptionStatus.ACTIVE,
             start_date=start_date,
@@ -206,7 +206,7 @@ async def update_subscription(
     subscription_id: int,
     subscription_data: SubscriptionUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """구독 수정"""
     try:
@@ -215,7 +215,7 @@ async def update_subscription(
         # 구독 조회
         subscription = db.query(Subscription).filter(
             Subscription.id == subscription_id,
-            Subscription.user_id == current_user.get('id')
+            Subscription.user_id == current_user.id
         ).first()
         
         if not subscription:
@@ -266,7 +266,7 @@ async def cancel_subscription(
     subscription_id: int,
     cancel_reason: str = "사용자 요청",
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """구독 취소"""
     try:
@@ -275,7 +275,7 @@ async def cancel_subscription(
         # 구독 조회
         subscription = db.query(Subscription).filter(
             Subscription.id == subscription_id,
-            Subscription.user_id == current_user.get('id')
+            Subscription.user_id == current_user.id
         ).first()
         
         if not subscription:

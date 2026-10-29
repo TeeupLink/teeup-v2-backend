@@ -929,7 +929,7 @@ def revoke_all_user_tokens(user_id: int, reason: TokenRevokeReason, db: Session)
 async def revoke_refresh_token_api(token_jti: str,
                                    reason: TokenRevokeReason = TokenRevokeReason.LOGOUT,
                                    db: Session = Depends(get_db),
-                                   current_user: dict = Depends(get_current_user)):
+                                   current_user: User = Depends(get_current_user)):
     """
     특정 리프레시 토큰 무효화
     """
@@ -940,7 +940,7 @@ async def revoke_refresh_token_api(token_jti: str,
         # 토큰 무효화
         blacklist_entry = revoke_refresh_token(
             token_jti=token_jti,
-            user_id=int(current_user["id"]) if isinstance(current_user["id"], str) else current_user["id"],
+            user_id=int(current_user.id) if isinstance(current_user.id, str) else current_user.id,
             reason=reason,
             expires_at=expires_at,
             db=db)
@@ -957,13 +957,13 @@ async def revoke_refresh_token_api(token_jti: str,
 @router.post("/revoke-all-tokens", response_model=MessageResponse)
 async def revoke_all_user_tokens_api(reason: TokenRevokeReason = TokenRevokeReason.LOGOUT,
                                      db: Session = Depends(get_db),
-                                     current_user: dict = Depends(get_current_user)):
+                                     current_user: User = Depends(get_current_user)):
     """
     사용자의 모든 리프레시 토큰 무효화 (모든 기기에서 로그아웃)
     """
     try:
         result = revoke_all_user_tokens(
-            user_id=int(current_user["id"]) if isinstance(current_user["id"], str) else current_user["id"],
+            user_id=int(current_user.id) if isinstance(current_user.id, str) else current_user.id,
             reason=reason,
             db=db)
 

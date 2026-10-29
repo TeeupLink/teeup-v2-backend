@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from config import settings
 from database import get_db
-from models import Payment
+from models import Payment, User
 from schemas import PaymentStatus, PaymentMethod
 
 # 로깅 설정
@@ -85,7 +85,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 async def confirm_payment(
     request: PaymentConfirmRequest,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     토스페이먼츠 결제 승인 API
@@ -123,7 +123,7 @@ async def confirm_payment(
                 error_data = response.json()
                 error_message = error_data.get('message', '알 수 없는 오류가 발생했습니다.')
                 error_code = error_data.get('code', 'UNKNOWN_ERROR')
-            except:
+            except Exception:
                 error_message = response.text
                 error_code = 'PARSE_ERROR'
             
@@ -153,7 +153,7 @@ async def confirm_payment(
         try:
             # 결제 정보를 데이터베이스에 저장
             payment_record = Payment(
-                user_id=current_user["user_id"],
+                user_id=current_user.id,
                 amount=payment_data.get('totalAmount', 0),
                 currency=payment_data.get('currency', 'KRW'),
                 status=PaymentStatus.SUCCEEDED if payment_data.get('status') == 'DONE' else PaymentStatus.PENDING,
@@ -200,7 +200,7 @@ async def confirm_payment(
 async def get_payment(
     payment_key: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     결제 정보 조회 API
@@ -227,7 +227,7 @@ async def get_payment(
                 error_data = response.json()
                 error_message = error_data.get('message', '알 수 없는 오류가 발생했습니다.')
                 error_code = error_data.get('code', 'UNKNOWN_ERROR')
-            except:
+            except Exception:
                 error_message = response.text
                 error_code = 'PARSE_ERROR'
             
@@ -256,7 +256,7 @@ async def get_payment(
         try:
             local_payment = db.query(Payment).filter(
                 Payment.payment_key == payment_key,
-                Payment.user_id == current_user["user_id"]
+                Payment.user_id == current_user.id
             ).first()
             
             if local_payment:
@@ -294,7 +294,7 @@ async def cancel_payment(
     payment_key: str,
     cancel_reason: str,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     결제 취소 API
@@ -326,7 +326,7 @@ async def cancel_payment(
                 error_data = response.json()
                 error_message = error_data.get('message', '알 수 없는 오류가 발생했습니다.')
                 error_code = error_data.get('code', 'UNKNOWN_ERROR')
-            except:
+            except Exception:
                 error_message = response.text
                 error_code = 'PARSE_ERROR'
             
@@ -356,7 +356,7 @@ async def cancel_payment(
         try:
             payment_record = db.query(Payment).filter(
                 Payment.payment_key == payment_key,
-                Payment.user_id == current_user["user_id"]
+                Payment.user_id == current_user.id
             ).first()
             
             if payment_record:
@@ -398,7 +398,7 @@ async def get_payment_list(
     page: int = 1,
     limit: int = 20,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     결제 내역 조회 API
@@ -408,13 +408,13 @@ async def get_payment_list(
         from datetime import datetime
         from sqlalchemy import and_, or_
         
-        logger.info(f"결제 내역 조회 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"결제 내역 조회 시작 - user_id: {current_user.id}")
         
         # 페이지네이션 계산
         offset = (page - 1) * limit
         
         # 기본 쿼리 - 사용자별 결제 내역만 조회
-        query = db.query(Payment).filter(Payment.user_id == current_user.get('id'))
+        query = db.query(Payment).filter(Payment.user_id == current_user.id)
         
         # 날짜 필터링
         if start_date:
@@ -491,22 +491,22 @@ async def get_payment_list(
         
         # 통계 정보 계산
         total_amount = db.query(Payment).filter(
-            Payment.user_id == current_user.get('id'),
+            Payment.user_id == current_user.id,
             Payment.status == PaymentStatus.SUCCEEDED
         ).with_entities(func.sum(Payment.amount)).scalar() or 0
         
         successful_payments = db.query(Payment).filter(
-            Payment.user_id == current_user.get('id'),
+            Payment.user_id == current_user.id,
             Payment.status == PaymentStatus.SUCCEEDED
         ).count()
         
         failed_payments = db.query(Payment).filter(
-            Payment.user_id == current_user.get('id'),
+            Payment.user_id == current_user.id,
             Payment.status == PaymentStatus.FAILED
         ).count()
         
         pending_payments = db.query(Payment).filter(
-            Payment.user_id == current_user.get('id'),
+            Payment.user_id == current_user.id,
             Payment.status == PaymentStatus.PENDING
         ).count()
         
@@ -553,7 +553,7 @@ async def get_payment_statistics(
     start_date: str | None = None,
     end_date: str | None = None,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """
     결제 통계 조회 API
@@ -561,10 +561,10 @@ async def get_payment_statistics(
     try:
         from datetime import datetime, timedelta
         
-        logger.info(f"결제 통계 조회 시작 - user_id: {current_user.get('user_id')}")
+        logger.info(f"결제 통계 조회 시작 - user_id: {current_user.id}")
         
         # 기본 쿼리
-        query = db.query(Payment).filter(Payment.user_id == current_user.get('user_id'))
+        query = db.query(Payment).filter(Payment.user_id == current_user.id)
         
         # 날짜 필터링
         if start_date:
@@ -637,7 +637,7 @@ async def get_payment_statistics(
         
         monthly_stats.reverse()  # 최신순으로 정렬
         
-        logger.info(f"결제 통계 조회 완료 - user_id: {current_user.get('id')}")
+        logger.info(f"결제 통계 조회 완료 - user_id: {current_user.id}")
         
         return {
             "summary": {

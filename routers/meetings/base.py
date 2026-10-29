@@ -210,7 +210,7 @@ async def create_meeting(meeting_data: RoundingMeetingCreate,
 async def get_rounding_meetings(page: int = Query(1, ge=1),
                                 limit: int = Query(10, ge=1, le=100),
                                 db: Session = Depends(get_db),
-                                current_user: dict = Depends(get_current_user)):
+                                current_user: User = Depends(get_current_user)):
     """라운딩 모임 목록 조회"""
     try:
         # 사용자가 속한 클럽들의 ID 조회

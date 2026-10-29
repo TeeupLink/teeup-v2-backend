@@ -30,14 +30,14 @@ def generate_payment_method_id() -> str:
 @router.get("/", response_model=list[PaymentMethodResponse])
 async def get_my_payment_methods(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """내 결제 수단 목록 조회"""
     try:
-        logger.info(f"내 결제 수단 조회 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"내 결제 수단 조회 시작 - user_id: {current_user.id}")
         
         payment_methods = db.query(UserPaymentMethod).filter(
-            UserPaymentMethod.user_id == current_user.get('id'),
+            UserPaymentMethod.user_id == current_user.id,
             UserPaymentMethod.status == PaymentMethodStatus.ACTIVE
         ).order_by(UserPaymentMethod.is_default.desc(), UserPaymentMethod.created_at.desc()).all()
         
@@ -71,16 +71,16 @@ async def get_my_payment_methods(
 async def create_payment_method(
     payment_method_data: PaymentMethodCreate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """결제 수단 등록"""
     try:
-        logger.info(f"결제 수단 등록 시작 - user_id: {current_user.get('id')}")
+        logger.info(f"결제 수단 등록 시작 - user_id: {current_user.id}")
         
         # 기본 결제 수단으로 설정하는 경우, 기존 기본 결제 수단 해제
         if payment_method_data.is_default:
             existing_default = db.query(UserPaymentMethod).filter(
-                UserPaymentMethod.user_id == current_user.get('id'),
+                UserPaymentMethod.user_id == current_user.id,
                 UserPaymentMethod.is_default == True,
                 UserPaymentMethod.status == PaymentMethodStatus.ACTIVE
             ).first()
@@ -91,7 +91,7 @@ async def create_payment_method(
         
         # 결제 수단 생성
         payment_method = UserPaymentMethod(
-            user_id=current_user.get('id'),
+            user_id=current_user.id,
             method_type=PaymentMethod(payment_method_data.method_type),
             method_name=payment_method_data.method_name,
             masked_info=payment_method_data.masked_info,
@@ -133,7 +133,7 @@ async def create_payment_method(
 async def get_payment_method(
     payment_method_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """결제 수단 상세 조회"""
     try:
@@ -141,7 +141,7 @@ async def get_payment_method(
         
         payment_method = db.query(UserPaymentMethod).filter(
             UserPaymentMethod.id == payment_method_id,
-            UserPaymentMethod.user_id == current_user.get('id')
+            UserPaymentMethod.user_id == current_user.id
         ).first()
         
         if not payment_method:
@@ -181,7 +181,7 @@ async def update_payment_method(
     payment_method_id: int,
     payment_method_data: PaymentMethodUpdate,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """결제 수단 수정"""
     try:
@@ -189,7 +189,7 @@ async def update_payment_method(
         
         payment_method = db.query(UserPaymentMethod).filter(
             UserPaymentMethod.id == payment_method_id,
-            UserPaymentMethod.user_id == current_user.get('id')
+            UserPaymentMethod.user_id == current_user.id
         ).first()
         
         if not payment_method:
@@ -201,7 +201,7 @@ async def update_payment_method(
         # 기본 결제 수단으로 설정하는 경우, 기존 기본 결제 수단 해제
         if payment_method_data.is_default and not payment_method.is_default:
             existing_default = db.query(UserPaymentMethod).filter(
-                UserPaymentMethod.user_id == current_user.get('id'),
+                UserPaymentMethod.user_id == current_user.id,
                 UserPaymentMethod.is_default == True,
                 UserPaymentMethod.status == PaymentMethodStatus.ACTIVE,
                 UserPaymentMethod.id != payment_method_id
@@ -258,7 +258,7 @@ async def update_payment_method(
 async def delete_payment_method(
     payment_method_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """결제 수단 삭제"""
     try:
@@ -266,7 +266,7 @@ async def delete_payment_method(
         
         payment_method = db.query(UserPaymentMethod).filter(
             UserPaymentMethod.id == payment_method_id,
-            UserPaymentMethod.user_id == current_user.get('id')
+            UserPaymentMethod.user_id == current_user.id
         ).first()
         
         if not payment_method:
@@ -278,7 +278,7 @@ async def delete_payment_method(
         # 기본 결제 수단인 경우 다른 결제 수단을 기본으로 설정
         if payment_method.is_default:
             other_method = db.query(UserPaymentMethod).filter(
-                UserPaymentMethod.user_id == current_user.get('id'),
+                UserPaymentMethod.user_id == current_user.id,
                 UserPaymentMethod.id != payment_method_id,
                 UserPaymentMethod.status == PaymentMethodStatus.ACTIVE
             ).first()
@@ -312,7 +312,7 @@ async def delete_payment_method(
 async def set_default_payment_method(
     payment_method_id: int,
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user)
+    current_user: User = Depends(get_current_user)
 ):
     """기본 결제 수단 설정"""
     try:
@@ -320,7 +320,7 @@ async def set_default_payment_method(
         
         payment_method = db.query(UserPaymentMethod).filter(
             UserPaymentMethod.id == payment_method_id,
-            UserPaymentMethod.user_id == current_user.get('id'),
+            UserPaymentMethod.user_id == current_user.id,
             UserPaymentMethod.status == PaymentMethodStatus.ACTIVE
         ).first()
         
@@ -332,7 +332,7 @@ async def set_default_payment_method(
         
         # 기존 기본 결제 수단 해제
         existing_default = db.query(UserPaymentMethod).filter(
-            UserPaymentMethod.user_id == current_user.get('id'),
+            UserPaymentMethod.user_id == current_user.id,
             UserPaymentMethod.is_default == True,
             UserPaymentMethod.status == PaymentMethodStatus.ACTIVE
         ).first()
