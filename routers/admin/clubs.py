@@ -2,6 +2,7 @@
 백오피스 클럽 API
 """
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 import logging
@@ -22,106 +23,77 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin-clubs"])
 
 @router.get("/clubs")
-def admin_list_clubs(page: int = 1,
-                     limit: int = 10,
-                     status_filter: str | None = None,
-                     search: str | None = None,
+def admin_list_clubs(page: int = Query(1, ge=1),
+                     limit: int = Query(10, ge=1, le=100),
+                     status_filter: str | None = Query(None, pattern="^(ACTIVE|INACTIVE)$"),
+                     search: str | None = Query(None, max_length=100),
+                     type: str | None = Query(None, pattern="^(REGULAR|IRREGULAR)$", description="클럽 유형"),
+                     sido_code: str | None = Query(None, max_length=2, description="시도 코드"),
+                     include_deleted: bool = Query(False, description="삭제된 클럽 포함"),
+                     sort: str | None = Query(None, pattern="^-?(name|member_count|created_at)$", description="기본 -created_at"),
                      current_user: dict = Depends(get_admin_user),
                      db: Session = Depends(get_db)):
-    """관리자용 클럽 목록 조회"""
-    try:
-        # 관리자 페이지에서는 삭제된 클럽도 조회 (deleted_at 필드로 구분)
-        query = db.query(Club)
-        if status_filter:
-            try:
-                status_enum = ClubStatus[status_filter]
-                query = query.filter(Club.status == status_enum)
-            except Exception:
-                pass
-        if search:
-            like = f"%{search}%"
-            query = query.filter((Club.name.ilike(like)) | (Club.description.ilike(like)))
-        total = query.count()
-        items = (query.order_by(Club.created_at.desc()).offset((page - 1) * limit).limit(limit).all())
-        data = []
-        for c in items:
-            # 대표자/리더명 계산: LEADER 멤버십의 사용자명 (realname > nickname > email 우선순위)
-            leader_name = None
-            try:
-                leader_membership = (db.query(ClubMembership,
-                                              User).join(User, ClubMembership.user_id == User.id).filter(
-                                                  ClubMembership.club_id == c.id,
-                                                  ClubMembership.role == ClubRole.LEADER).first())
-                if leader_membership:
-                    _, leader_user = leader_membership
-                    leader_name = getattr(leader_user, 'realname', None) or leader_user.nickname or leader_user.email
-            except Exception:
-                pass
+    """관리자용 클럽 목록 (backoffice F-041). 멤버 수·대기 신청 수·리더는 한 번에 집계한다"""
+    from sqlalchemy import func
 
-            # 실제 멤버 수 계산 (승인된 멤버만)
-            # ACTIVE 또는 APPROVED 상태의 멤버를 카운트 (일부는 APPROVED로 저장될 수 있음)
-            from sqlalchemy import or_
+    active = or_(ClubMembership.status == MembershipStatus.ACTIVE, ClubMembership.status == "APPROVED")
+    members = (db.query(ClubMembership.club_id, func.count().label("n")).filter(active)
+               .group_by(ClubMembership.club_id).subquery())
+    pending = (db.query(ClubMembership.club_id, func.count().label("n")).filter(ClubMembership.status == MembershipStatus.PENDING)
+               .group_by(ClubMembership.club_id).subquery())
+    member_n = func.coalesce(members.c.n, 0)
+    query = (db.query(Club, member_n.label("member_n"), func.coalesce(pending.c.n, 0).label("pending_n"))
+             .outerjoin(members, members.c.club_id == Club.id).outerjoin(pending, pending.c.club_id == Club.id))
+    if not include_deleted:
+        query = query.filter(Club.deleted_at.is_(None))
+    if status_filter:
+        query = query.filter(Club.status == ClubStatus[status_filter])
+    if type:
+        query = query.filter(Club.type == type)
+    if sido_code:
+        query = query.filter(Club.sido_code == sido_code)
+    if search:
+        like = f"%{search}%"
+        query = query.filter((Club.name.ilike(like)) | (Club.description.ilike(like)))
+    total = query.count()
 
-            # 모든 멤버십 상태 확인 (디버깅용)
-            all_memberships = db.query(ClubMembership).filter(ClubMembership.club_id == c.id).all()
+    key = (sort or "-created_at").lstrip("-")
+    column = {"name": Club.name, "member_count": member_n, "created_at": Club.created_at}[key]
+    ordering = column.asc() if sort and not sort.startswith("-") else column.desc()
+    rows = query.order_by(ordering, Club.id.desc()).offset((page - 1) * limit).limit(limit).all()
 
-            actual_member_count = db.query(ClubMembership).filter(
-                ClubMembership.club_id == c.id,
-                or_(
-                    ClubMembership.status == MembershipStatus.ACTIVE,
-                    ClubMembership.status == "APPROVED"  # 이전에 APPROVED로 저장된 멤버도 포함
-                )).count()
+    ids = [c.id for c, _, _ in rows]
+    leaders = {m.club_id: u for m, u in db.query(ClubMembership, User).join(User, ClubMembership.user_id == User.id)
+               .filter(ClubMembership.club_id.in_(ids), ClubMembership.role == ClubRole.LEADER).all()} if ids else {}
+    regions: dict[int, list[str]] = {}
+    for r in (db.query(ClubRegion).filter(ClubRegion.club_id.in_(ids)).all() if ids else []):
+        regions.setdefault(r.club_id, []).append(r.gungu_code)
 
-            # 디버깅: 예상 멤버수와 실제 멤버 수 비교
-            expected_count = getattr(c, 'member_count', None)
-            logger.info(f"Club {c.id} ({c.name}): expected={expected_count}, actual={actual_member_count}")
-            if all_memberships:
-                status_counts = {}
-                for m in all_memberships:
-                    status_counts[m.status] = status_counts.get(m.status, 0) + 1
-                logger.info(f"Club {c.id} membership statuses: {status_counts}")
+    data = []
+    for c, member_count, pending_count in rows:
+        leader = leaders.get(c.id)
+        data.append({
+            "id": c.id,
+            "display_id": c.display_id,
+            "name": c.name,
+            "description": c.description,
+            "type": c.type.value if hasattr(c.type, "value") else str(c.type),
+            "member_count": int(member_count),
+            "pending_count": int(pending_count),
+            "location": c.location,
+            "sido_code": c.sido_code,
+            "gungu_codes": regions.get(c.id, []),
+            "representative_name": c.representative_name,
+            "leader_id": leader.id if leader else None,
+            "leader_name": (leader.realname or leader.nickname or leader.email) if leader else None,
+            "leader_nickname": leader.nickname if leader else None,
+            "status": c.status.value if hasattr(c.status, "value") else str(c.status),
+            "deleted_at": c.deleted_at.isoformat() if c.deleted_at else None,
+            "created_at": c.created_at,
+            "updated_at": c.updated_at,
+        })
+    return {"data": data, "total": total, "page": page, "limit": limit, "total_pages": (total + limit - 1) // limit}
 
-            data.append({
-                "id":
-                c.id,
-                "display_id":
-                getattr(c, 'display_id', None),
-                "name":
-                c.name,
-                "description":
-                c.description,
-                "type":
-                c.type.value if hasattr(c.type, 'value') else str(c.type),
-                "member_count":
-                actual_member_count,  # 실제 멤버 수 사용
-                "location":
-                getattr(c, 'location', None),
-                "sido_code":
-                c.sido_code,
-                "gungu_codes":
-                [region.gungu_code for region in db.query(ClubRegion).filter(ClubRegion.club_id == c.id).all()],
-                "representative_name":
-                getattr(c, 'representative_name', None),
-                "leader_name":
-                leader_name,
-                "status":
-                c.status.value if hasattr(c.status, 'value') else str(c.status),
-                "deleted_at":
-                c.deleted_at.isoformat() if c.deleted_at else None,
-                "created_at":
-                c.created_at,
-                "updated_at":
-                c.updated_at,
-            })
-        return {
-            "data": data,
-            "total": total,
-            "page": page,
-            "limit": limit,
-            "total_pages": (total + limit - 1) // limit,
-        }
-    except Exception as e:
-        logger.error(f"admin list clubs error: {e}")
 @router.get("/clubs/{club_id}")
 async def get_admin_club(club_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
     """관리자용 클럽 상세 조회 (display_id 또는 id로 조회)"""
@@ -191,6 +163,9 @@ async def get_admin_club(club_id: str, db: Session = Depends(get_db), current_us
             club.member_count,  # 예상 멤버 수 (레거시)
             "current_member_count":
             current_member_count,  # 실제 멤버 수
+            **_club_stats(db, club, current_leader),
+            "deleted_at":
+            club.deleted_at.isoformat() if club.deleted_at else None,
             "created_at":
             club.created_at.isoformat() if club.created_at else None,
             "updated_at":
@@ -202,6 +177,25 @@ async def get_admin_club(club_id: str, db: Session = Depends(get_db), current_us
     except Exception as e:
         logger.error(f"관리자 클럽 상세 조회 중 오류: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="클럽 상세 조회 중 오류가 발생했습니다")
+
+
+def _club_stats(db: Session, club: Club, leader: ClubMembership | None) -> dict:
+    """상세 헤더·개요 통계 (SCR-042): 리더, 대기 신청, 라운딩·소셜 수, 최근 모임일"""
+    from sqlalchemy import func
+
+    from models import Meeting
+
+    user = db.query(User).filter(User.id == leader.user_id).first() if leader else None
+    counts = dict(db.query(Meeting.meeting_type, func.count()).filter(Meeting.club_id == club.id).group_by(Meeting.meeting_type).all())
+    last = db.query(func.max(Meeting.meeting_time)).filter(Meeting.club_id == club.id).scalar()
+    key = lambda t: next((v for k, v in counts.items() if getattr(k, "value", k) == t), 0)  # noqa: E731
+    return {
+        "leader": {"id": user.id, "nickname": user.nickname, "realname": user.realname} if user else None,
+        "pending_count": db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.status == MembershipStatus.PENDING).count(),
+        "round_count": key("ROUND"),
+        "social_count": key("SOCIAL"),
+        "last_meeting_at": last.isoformat() if last else None,
+    }
 
 
 def _resolve_club(db: Session, club_id: str) -> Club:
@@ -1331,102 +1325,77 @@ async def update_admin_club_member_role(club_id: str,
                                         role_data: dict,
                                         db: Session = Depends(get_db),
                                         current_user: dict = Depends(get_admin_user)):
-    """관리자용 클럽 멤버 역할 변경"""
-    try:
-        from models import Club, ClubMembership, ClubRole, User
-        from datetime import datetime, timezone
-
-        # 클럽 조회 (display_id 또는 id로)
-        club = db.query(Club).filter(Club.display_id == club_id).first()
-        if not club:
-            # display_id로 찾지 못했으면 숫자로 변환 가능한지 확인 후 id로 조회
-            try:
-                club_id_int = int(club_id)
-                club = db.query(Club).filter(Club.id == club_id_int).first()
-            except ValueError:
-                # 숫자로 변환 불가능한 경우
-                club = None
-
-        if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
-
-        # 대상 멤버 조회
-        target_membership = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
-                                                            ClubMembership.user_id == user_id).first()
-
-        if not target_membership:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
-
-        # 역할 변경
-        new_role = role_data.get("new_role") or role_data.get("role")
-        if not new_role:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="역할을 지정해주세요")
-
-        # 유효한 역할인지 확인
-        if new_role not in ['MEMBER', 'MANAGER', 'LEADER']:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 역할입니다")
-
-        target_membership.role = ClubRole[new_role]
-        target_membership.updated_at = get_kst_now()
-        db.commit()
-
-        return {"message": f"멤버 역할이 {new_role}로 변경되었습니다", "success": True}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"관리자 멤버 역할 변경 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                            detail=f"멤버 역할 변경 중 오류가 발생했습니다: {str(e)}")
-
+    """멤버 역할 변경 MEMBER ↔ MANAGER. 리더 지정·해제는 POST /clubs/{id}/leader 로만 (리더 2명 방지)"""
+    club = _resolve_club(db, club_id)
+    target = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.user_id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
+    new_role = role_data.get("new_role") or role_data.get("role")
+    if new_role not in ("MEMBER", "MANAGER"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="역할은 MEMBER 또는 MANAGER 입니다. 리더는 리더 교체로 지정합니다")
+    if target.role == ClubRole.LEADER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="리더의 역할은 리더 교체로만 바꿀 수 있습니다")
+    before = target.role.value if hasattr(target.role, "value") else str(target.role)
+    target.role = ClubRole[new_role]
+    target.updated_at = get_kst_now()
+    db.commit()
+    audit.record("UPDATE", "CLUB_MEMBERSHIP", target.id, before={"role": before}, after={"role": new_role},
+                 reason=role_data.get("reason"), meta={"club_id": club.id, "user_id": user_id})
+    return {"message": f"멤버 역할이 {new_role}로 변경되었습니다", "success": True}
 
 @router.delete("/clubs/{club_id}/members/{user_id}")
 async def remove_admin_club_member(club_id: str,
                                    user_id: int,
+                                   reason: str | None = Query(None, max_length=500),
                                    db: Session = Depends(get_db),
                                    current_user: dict = Depends(get_admin_user)):
-    """관리자용 클럽 멤버 내보내기"""
-    try:
-        from models import Club, ClubMembership, User
+    """멤버 내보내기. 리더는 먼저 리더를 교체해야 한다"""
+    club = _resolve_club(db, club_id)
+    target = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.user_id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
+    if target.role == ClubRole.LEADER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="리더는 내보낼 수 없습니다. 먼저 리더를 교체해주세요")
+    before = membership_svc.describe(db, target)
+    was_active = target.status in (MembershipStatus.ACTIVE, "APPROVED")
+    db.delete(target)
+    if was_active:
+        club.member_count = max(0, (club.member_count or 0) - 1)
+    db.commit()
+    audit.record("DELETE", "CLUB_MEMBERSHIP", before["membership_id"], before=before, reason=reason, meta={"club_id": club.id})
+    activity.log(user_id, "CLUB_LEAVE", f"{club.name} 탈퇴 (운영자 처리)", target_type="CLUB", target_id=club.id, meta={"by_admin": True})
+    return {"message": "멤버가 성공적으로 내보내졌습니다", "success": True}
 
-        # 클럽 조회 (display_id 또는 id로)
-        club = db.query(Club).filter(Club.display_id == club_id).first()
-        if not club:
-            # display_id로 찾지 못했으면 숫자로 변환 가능한지 확인 후 id로 조회
-            try:
-                club_id_int = int(club_id)
-                club = db.query(Club).filter(Club.id == club_id_int).first()
-            except ValueError:
-                # 숫자로 변환 불가능한 경우
-                club = None
 
-        if not club:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="클럽을 찾을 수 없습니다")
+class LeaderBody(BaseModel):
+    new_leader_id: int
+    reason: str | None = Field(None, max_length=500)
 
-        # 대상 멤버 조회
-        target_membership = db.query(ClubMembership).filter(ClubMembership.club_id == club.id,
-                                                            ClubMembership.user_id == user_id).first()
 
-        if not target_membership:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
-
-        # 멤버십 삭제
-        db.delete(target_membership)
-
-        # 클럽 멤버 수 감소
-        club.member_count = max(0, club.member_count - 1)
-        db.commit()
-
-        return {"message": "멤버가 성공적으로 내보내졌습니다", "success": True}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"관리자 멤버 내보내기 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"멤버 내보내기 중 오류가 발생했습니다: {str(e)}")
-
+@router.post("/clubs/{club_id}/leader")
+async def change_admin_club_leader(club_id: str, body: LeaderBody, db: Session = Depends(get_db),
+                                   current_user: dict = Depends(get_admin_user)):
+    """리더 교체 (F-044). 한 트랜잭션: 기존 리더 → MANAGER, 대상 → LEADER"""
+    club = _resolve_club(db, club_id)
+    target = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.user_id == body.new_leader_id).first()
+    if not target or target.status not in (MembershipStatus.ACTIVE, "APPROVED"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="리더는 이 클럽의 활성 멤버만 될 수 있습니다")
+    if target.role == ClubRole.LEADER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 리더입니다")
+    olds = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.role == ClubRole.LEADER).all()
+    now = get_kst_now()
+    for m in olds:
+        m.role = ClubRole.MANAGER
+        m.updated_at = now
+    target.role = ClubRole.LEADER
+    target.updated_at = now
+    user = db.query(User).filter(User.id == body.new_leader_id).first()
+    if user:
+        club.representative_name = user.realname or user.nickname
+    db.commit()
+    audit.record("UPDATE", "CLUB", club.id, before={"leader_user_ids": [m.user_id for m in olds]},
+                 after={"leader_user_ids": [body.new_leader_id]}, reason=body.reason, meta={"action": "LEADER_CHANGE"})
+    return {"success": True, "leader_id": body.new_leader_id, "previous_leader_ids": [m.user_id for m in olds]}
 
 @router.put("/clubs/{club_id}")
 async def update_admin_club(club_id: str,
@@ -1476,7 +1445,10 @@ async def update_admin_club(club_id: str,
             club.additional_info = club_data["additional_info"]
         if club_data.get("application_deadline") is not None:
             club.application_deadline = club_data["application_deadline"]
+        before_status = club.status.value if hasattr(club.status, "value") else str(club.status)
         if club_data.get("status") is not None:
+            if club_data["status"] not in ("ACTIVE", "INACTIVE"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="상태는 ACTIVE 또는 INACTIVE 입니다")
             club.status = ClubStatus(club_data["status"])
 
         if "gungu_codes" in club_data:
@@ -1492,6 +1464,9 @@ async def update_admin_club(club_id: str,
         club.updated_at = get_kst_now()
         db.commit()
         db.refresh(club)
+        if club_data.get("status") is not None and club_data["status"] != before_status:
+            audit.record("STATUS_CHANGE", "CLUB", club.id, before={"status": before_status}, after={"status": club_data["status"]},
+                         reason=club_data.get("reason"))
 
         club.gungu_codes = [
             region.gungu_code for region in db.query(ClubRegion).filter(ClubRegion.club_id == club.id).all()
@@ -1513,7 +1488,8 @@ async def update_admin_club(club_id: str,
 
 
 @router.delete("/clubs/{club_id}")
-async def delete_admin_club(club_id: str, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+async def delete_admin_club(club_id: str, reason: str | None = Query(None, max_length=500), db: Session = Depends(get_db),
+                            current_user: dict = Depends(get_admin_user)):
     """관리자용 클럽 삭제"""
     try:
         club = db.query(Club).filter(Club.display_id == club_id).first()
@@ -1543,6 +1519,7 @@ async def delete_admin_club(club_id: str, db: Session = Depends(get_db), current
             membership.updated_at = get_kst_now()
 
         db.commit()
+        audit.record("DELETE", "CLUB", club.id, before={"name": club.name, "status": getattr(club.status, "value", club.status)}, reason=reason)
         logger.info(f"관리자가 클럽 삭제: {club.display_id} ({club.name})")
         return {"success": True, "message": f"클럽 '{club.name}'이 성공적으로 삭제되었습니다."}
 
