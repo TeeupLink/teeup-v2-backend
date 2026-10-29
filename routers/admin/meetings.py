@@ -408,6 +408,39 @@ async def admin_get_meetings(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="모임 목록 조회 중 오류가 발생했습니다")
 
 
+def _filter_period(query, date, date_from, date_to):
+    """모임일 기간 (KST 날짜 기준, 끝 날짜 포함). date=today 는 대시보드 링크용"""
+    from models import Meeting
+    if date == "today":
+        date_from = date_to = get_kst_now().strftime("%Y-%m-%d")
+    if date_from:
+        query = query.filter(Meeting.meeting_time >= datetime.strptime(date_from, "%Y-%m-%d"))
+    if date_to:
+        query = query.filter(Meeting.meeting_time < datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1))
+    return query
+
+
+def _ordering(sort):
+    """기본 모임일 최신순, 같은 값은 id 로 고정"""
+    from models import Meeting
+    from sqlalchemy import desc
+    column = Meeting.meeting_time if (sort or "-meeting_time").lstrip("-") == "meeting_time" else Meeting.created_at
+    return (column.asc() if sort and not sort.startswith("-") else desc(column)), desc(Meeting.id)
+
+
+def _counts(db, meeting_ids):
+    """참가자·확정 인원 — 목록 N+1 대신 한 번에"""
+    from models import MeetingParticipant
+    from sqlalchemy import case, func
+    if not meeting_ids:
+        return {}
+    rows = (db.query(MeetingParticipant.meeting_id, func.count(MeetingParticipant.id),
+                     func.sum(case((MeetingParticipant.status == "CONFIRMED", 1), else_=0)))
+            .filter(MeetingParticipant.meeting_id.in_(meeting_ids))
+            .group_by(MeetingParticipant.meeting_id).all())
+    return {mid: (int(total or 0), int(confirmed or 0)) for mid, total, confirmed in rows}
+
+
 @router.get("/meetings/rounding")
 async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="페이지 번호"),
                                       limit: int = Query(10, ge=1, le=100, description="페이지당 항목 수"),
@@ -442,22 +475,12 @@ async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="�
                                 Meeting.location.contains(search))
             query = query.filter(search_filter)
 
-        # 모임일 기간 (KST 날짜 기준, 끝 날짜 포함)
-        if date == "today":
-            date_from = date_to = get_kst_now().strftime("%Y-%m-%d")
-        if date_from:
-            query = query.filter(Meeting.meeting_time >= datetime.strptime(date_from, "%Y-%m-%d"))
-        if date_to:
-            query = query.filter(Meeting.meeting_time < datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1))
+        query = _filter_period(query, date, date_from, date_to)
 
         # 총 개수 조회
         total = query.count()
 
-        # 정렬: 기본 모임일 최신순, 같은 값은 id 로 고정
-        sort_key = (sort or "-meeting_time").lstrip("-")
-        column = Meeting.meeting_time if sort_key == "meeting_time" else Meeting.created_at
-        ordering = column.asc() if sort and not sort.startswith("-") else desc(column)
-        meetings = query.order_by(ordering, desc(Meeting.id)).offset((page - 1) * limit).limit(limit).all()
+        meetings = query.order_by(*_ordering(sort)).offset((page - 1) * limit).limit(limit).all()
 
         # 응답 데이터 구성
         meeting_data = []
@@ -551,100 +574,69 @@ async def admin_get_event_meetings(page: int = Query(1, ge=1, description="페�
                                    status: str | None = Query(None, description="모임 상태 필터"),
                                    search: str | None = Query(None, description="검색어"),
                                    club_id: int | None = Query(None, description="클럽 ID 필터"),
+                                   social_type: str | None = Query(None, pattern="^(CASUAL|DINNER|EVENT)$", description="소셜 유형"),
+                                   date: str | None = Query(None, pattern="^today$", description="today: 오늘 모임"),
+                                   date_from: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$", description="모임일 시작 (포함)"),
+                                   date_to: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$", description="모임일 끝 (포함)"),
+                                   sort: str | None = Query(None, pattern="^-?(meeting_time|created_at)$", description="기본 -meeting_time"),
                                    current_user: dict = Depends(get_admin_user),
                                    db: Session = Depends(get_db)):
-    """관리자용 이벤트 모임 목록 조회 (모든 클럽 조회 가능)"""
-    try:
-        from models import Meeting, Club, MeetingParticipant, User
-        from schemas import MeetingType
-        from sqlalchemy import desc, and_, or_
+    """관리자용 소셜(이벤트) 모임 목록 조회 (모든 클럽 조회 가능)"""
+    from models import Meeting, Club, User
+    from models.enums import SocialType
+    from schemas import MeetingType
+    from sqlalchemy import or_
 
-        query = db.query(Meeting).join(Club).filter(Meeting.meeting_type == MeetingType.SOCIAL)
+    query = db.query(Meeting).join(Club).filter(Meeting.meeting_type == MeetingType.SOCIAL)
+    if club_id:
+        query = query.filter(Meeting.club_id == club_id)
+    if status:
+        query = query.filter(Meeting.status == status)
+    if social_type:
+        query = query.filter(Meeting.social_type == SocialType(social_type))
+    if search:
+        query = query.filter(or_(Meeting.name.contains(search), Meeting.venue_name.contains(search),
+                                 Meeting.location.contains(search)))
+    query = _filter_period(query, date, date_from, date_to)
 
-        # 클럽 필터
-        if club_id:
-            query = query.filter(Meeting.club_id == club_id)
+    total = query.count()
+    meetings = query.order_by(*_ordering(sort)).offset((page - 1) * limit).limit(limit).all()
 
-        # 상태 필터
-        if status:
-            query = query.filter(Meeting.status == status)
+    counts = _counts(db, [m.id for m in meetings])
+    creator_ids = {m.created_by for m in meetings if m.created_by}
+    creators = {u.id: u for u in db.query(User).filter(User.id.in_(creator_ids)).all()} if creator_ids else {}
 
-        # 검색 필터
-        if search:
-            search_filter = or_(Meeting.name.contains(search), Meeting.venue_name.contains(search),
-                                Meeting.location.contains(search))
-            query = query.filter(search_filter)
+    def _v(x):
+        return x.value if hasattr(x, "value") else (str(x) if x is not None else None)
 
-        # 총 개수 조회
-        total = query.count()
+    data = []
+    for m in meetings:
+        creator = creators.get(m.created_by)
+        total_count, confirmed = counts.get(m.id, (0, 0))
+        data.append({
+            "id": m.id,
+            "name": m.name,
+            "description": m.description,
+            "meeting_type": _v(m.meeting_type),
+            "meeting_subtype": _v(m.meeting_subtype),
+            "social_type": _v(m.social_type),
+            "location": m.location,
+            "venue_name": m.venue_name,
+            "meeting_time": m.meeting_time.isoformat() if m.meeting_time else None,
+            "max_participants": m.max_participants,
+            "status": _v(m.status),
+            "club_id": m.club_id,
+            "club_name": m.club.name,
+            "participant_count": total_count,
+            "confirmed_count": confirmed,
+            "settlement_confirmed": bool(m.settlement_confirmed),
+            "creator": {"id": creator.id, "realname": creator.realname, "nickname": creator.nickname,
+                        "email": creator.email} if creator else None,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "updated_at": m.updated_at.isoformat() if m.updated_at else None,
+        })
 
-        # 페이지네이션 (최신순)
-        meetings = query.order_by(desc(Meeting.created_at)).offset((page - 1) * limit).limit(limit).all()
-
-        # 응답 데이터 구성
-        meeting_data = []
-        for meeting in meetings:
-            # 참가자 수 조회
-            participant_count = db.query(MeetingParticipant).filter(
-                MeetingParticipant.meeting_id == meeting.id
-            ).count()
-
-            # 개설자(생성자) 조회
-            creator_info = None
-            if meeting.created_by:
-                creator = db.query(User).filter(User.id == meeting.created_by).first()
-                if creator:
-                    creator_info = {
-                        "id": creator.id,
-                        "realname": creator.realname,
-                        "nickname": creator.nickname,
-                        "email": creator.email
-                    }
-
-            meeting_data.append({
-                "id":
-                meeting.id,
-                "name":
-                meeting.name,
-                "description":
-                meeting.description,
-                "meeting_type":
-                meeting.meeting_type.value if hasattr(meeting.meeting_type, 'value') else str(meeting.meeting_type),
-                "meeting_subtype":
-                meeting.meeting_subtype.value
-                if hasattr(meeting.meeting_subtype, 'value') else str(meeting.meeting_subtype),
-                "location":
-                meeting.location,
-                "venue_name":
-                meeting.venue_name,
-                "meeting_time":
-                meeting.meeting_time.isoformat() if meeting.meeting_time else None,
-                "max_participants":
-                meeting.max_participants,
-                "status":
-                meeting.status.value if hasattr(meeting.status, 'value') else str(meeting.status),
-                "club_id":
-                meeting.club_id,
-                "club_name":
-                meeting.club.name,
-                "participant_count":
-                participant_count,
-                "creator":
-                creator_info,
-                "created_at":
-                meeting.created_at.isoformat() if meeting.created_at else None,
-                "updated_at":
-                meeting.updated_at.isoformat() if meeting.updated_at else None
-            })
-
-        total_pages = (total + limit - 1) // limit
-
-        return {"data": meeting_data, "total": total, "page": page, "limit": limit, "total_pages": total_pages}
-
-    except Exception as e:
-        logger.error(f"관리자 이벤트 모임 목록 조회 중 오류: {str(e)}")
-        from fastapi import status as http_status
-        raise HTTPException(status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR, detail="이벤트 모임 목록 조회 중 오류가 발생했습니다")
+    return {"data": data, "total": total, "page": page, "limit": limit, "total_pages": (total + limit - 1) // limit}
 
 
 # =============================================================================
@@ -2275,6 +2267,12 @@ async def get_admin_meeting(meeting_id: int,
             meeting.updated_at.isoformat() if meeting.updated_at else None,
             "social_notes":
             getattr(meeting, "social_notes", None) or None,
+            "social_type":
+            meeting.social_type.value if getattr(meeting, "social_type", None) and hasattr(meeting.social_type, "value") else None,
+            "social_cost":
+            _dec_str(meeting.social_cost),
+            "settlement_confirmed":
+            bool(meeting.settlement_confirmed),
         }
 
     except HTTPException:
@@ -2577,6 +2575,14 @@ async def create_admin_event_meeting(meeting_data: dict,
         from models.enums import SocialType, SettlementMethod
         from datetime import datetime
 
+        errors = []
+        if not str(meeting_data.get('name') or '').strip():
+            errors.append({"field": "name", "message": "모임명을 입력해주세요"})
+        if not meeting_data.get('meeting_time'):
+            errors.append({"field": "meeting_time", "message": "모임 일시를 입력해주세요"})
+        if errors:
+            raise HTTPException(status_code=422, detail=errors)
+
         # 클럽 존재 확인
         club = db.query(Club).filter(Club.id == meeting_data.get('club_id')).first()
         if not club:
@@ -2661,7 +2667,10 @@ async def create_admin_event_meeting(meeting_data: dict,
             getattr(meeting, "social_notes", None) or None,
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
+        db.rollback()
         logger.error(f"관리자 이벤트 모임 생성 중 오류: {str(e)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="이벤트 모임 생성 중 오류가 발생했습니다")
 
@@ -2685,7 +2694,7 @@ async def update_admin_meeting(meeting_id: int,
     try:
         from decimal import Decimal
         from models import Meeting, Club, MeetingParticipant
-        from models.enums import MeetingSubtype, SettlementMethod
+        from models.enums import MeetingSubtype, SettlementMethod, SocialType
 
         # 모임 조회
         meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
@@ -2700,6 +2709,8 @@ async def update_admin_meeting(meeting_id: int,
             'venue_name', 'social_notes',
         ]
         mt0 = meeting.meeting_type.value if hasattr(meeting.meeting_type, 'value') else str(meeting.meeting_type)
+        if mt0 == 'SOCIAL':
+            update_fields += ['application_deadline', 'social_type', 'social_cost', 'settlement_method']
         if mt0 == 'ROUND':
             update_fields += [
                 'application_deadline', 'tee_times', 'course_name', 'reservation_name', 'hole_count',
@@ -2745,11 +2756,24 @@ async def update_admin_meeting(meeting_id: int,
                     value = MeetingSubtype(value) if isinstance(value, str) else value
                 except ValueError:
                     continue
-            elif field == 'settlement_method' and value:
+            elif field == 'settlement_method':
                 try:
-                    value = SettlementMethod(value) if isinstance(value, str) else value
+                    value = (SettlementMethod(value) if isinstance(value, str) else value) if value else None
                 except ValueError:
                     continue
+            elif field == 'social_type':
+                try:
+                    value = SocialType(value) if value else None
+                except ValueError:
+                    continue
+            elif field == 'social_cost':
+                if value is None or value == '':
+                    value = None
+                else:
+                    try:
+                        value = Decimal(str(value))
+                    except Exception:
+                        continue
             elif field in ('green_fee', 'caddy_fee', 'cart_fee', 'total_cost'):
                 if value is None or value == '':
                     continue
