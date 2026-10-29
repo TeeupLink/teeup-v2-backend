@@ -3,6 +3,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from utils import activity
 from utils.content_filter import reject_banned_content
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -255,6 +256,8 @@ async def update_my_profile(
 
         db.commit()
         db.refresh(user)
+        # 바뀐 항목 이름만 남긴다 (값에는 개인정보가 섞일 수 있다)
+        activity.log(user.id, "PROFILE_UPDATE", "프로필 수정", meta={"fields": sorted(update_data.keys())})
 
         # ---------------------------
         # 6. 응답 DTO
@@ -727,6 +730,7 @@ async def delete_my_account(db: Session = Depends(get_db), current_user: User = 
         user.status = UserStatus.DELETED
 
         db.commit()
+        activity.log(user.id, "WITHDRAW", "회원 탈퇴")
 
         logger.info(f"회원 탈퇴 완료 - user_id: {current_user.id}")
         return MessageResponse(message="회원 탈퇴가 완료되었습니다", success=True)

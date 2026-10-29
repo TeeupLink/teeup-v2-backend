@@ -4,6 +4,7 @@ from pydantic import BaseModel
 import requests
 import os
 from datetime import datetime, timedelta
+from utils import activity
 from utils.datetime_utils import get_kst_now
 import logging
 from sqlalchemy.orm import Session
@@ -172,6 +173,13 @@ async def confirm_payment(
             db.add(payment_record)
             db.commit()
             db.refresh(payment_record)
+            activity.log(
+                payment_record.user_id,
+                "PAYMENT",
+                f"결제 {payment_record.amount or 0:,}원 {payment_record.order_name or ''}".strip(),
+                target_type="PAYMENT",
+                target_id=payment_record.id,
+            )
             
             logger.info(f"결제 정보 데이터베이스 저장 완료: {payment_record.id}")
             

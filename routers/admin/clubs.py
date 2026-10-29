@@ -11,7 +11,7 @@ from database import get_db
 from models import Club, ClubMembership, ClubRegion, User, ClubStatus, ClubRole
 from schemas import MembershipStatus
 from services import admin_membership_service as membership_svc
-from utils import audit
+from utils import activity, audit
 from utils.datetime_utils import get_kst_now
 from utils.display_id_generator import generate_club_display_id
 from utils.region import validate_gungu_codes
@@ -1182,6 +1182,7 @@ async def approve_admin_club_membership(club_id: str,
 
         db.commit()
         audit.record("APPROVE", "CLUB_MEMBERSHIP", membership.id, before=before, after={"status": "ACTIVE"})
+        activity.log(user_id, "CLUB_JOIN", f"{club.name} 가입", target_type="CLUB", target_id=club.id)
 
         # status 값 추출 (Enum인지 문자열인지 확인)
         status_value = membership.status.value if hasattr(membership.status, 'value') else str(membership.status)

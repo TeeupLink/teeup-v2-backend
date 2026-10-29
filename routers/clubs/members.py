@@ -17,6 +17,7 @@ from schemas import (
     ClubMembershipResponse,
 )
 from routers.auth import get_current_active_user
+from utils import activity
 from utils.datetime_utils import get_kst_now
 
 router = APIRouter(prefix="/clubs", tags=["클럽 멤버 관리"])
@@ -620,6 +621,7 @@ async def join_club(
         
         # 멤버 수는 증가시키지 않음 (승인 후에만 증가)
         db.commit()
+        activity.log(current_user, "CLUB_JOIN_REQUEST", f"{club.name} 가입신청", target_type="CLUB", target_id=club.id)
         
         # 클럽 리더/매니저에게 새 회원 가입신청 알림 전송
         try:
@@ -825,6 +827,7 @@ async def approve_membership(
         club.updated_at = get_kst_now()
         
         db.commit()
+        activity.log(user_id, "CLUB_JOIN", f"{club.name} 가입", target_type="CLUB", target_id=club.id)
         
         # 클럽 가입 승인 알림 전송 (커밋 후 별도 처리, 실패해도 메인 트랜잭션에 영향 없음)
         try:
@@ -1290,6 +1293,7 @@ async def leave_club(
         db.add(club)  # 클럽 객체를 세션에 다시 추가
         
         db.commit()
+        activity.log(current_user, "CLUB_LEAVE", f"{club.name} 탈퇴", target_type="CLUB", target_id=club.id)
         
         return {"message": "클럽에서 성공적으로 탈퇴했습니다.", "success": True}
         

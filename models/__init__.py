@@ -36,6 +36,9 @@ from .moderation import ContentReport, UserBlock
 # 감사 로그 (backend #49)
 from .audit import AdminAuditLog, AuditMonthlyReview
 
+# 회원 활동 로그 (backend #50)
+from .activity import UserActivityLog
+
 # 기타 모델
 from .notification import Notification
 from .device_token import UserDeviceToken
@@ -82,6 +85,7 @@ __all__ = [
     "Admin",
     "AdminAuditLog",
     "AuditMonthlyReview",
+    "UserActivityLog",
     # Club
     "Club",
     "ClubMembership",

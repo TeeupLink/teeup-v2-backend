@@ -12,6 +12,7 @@ from datetime import datetime, time, timedelta
 from decimal import Decimal
 import logging
 from schemas.team import TeamMemberResponse
+from utils import activity
 from utils.datetime_utils import get_kst_now
 
 from database import get_db
@@ -212,6 +213,7 @@ async def apply_to_meeting(meeting_id: int,
         db.commit()
         db.refresh(participant)
 
+        activity.log(current_user, "MEETING_JOIN", f"{getattr(meeting, 'name', '')} 참가", target_type="MEETING", target_id=meeting_id)
         return {"message": "참가가 완료되었습니다."}
 
     except HTTPException:

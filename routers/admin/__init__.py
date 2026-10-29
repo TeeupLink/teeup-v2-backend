@@ -30,6 +30,7 @@ from .faq import router as faq_router
 from .join_requests import router as join_requests_router
 from .lookup import router as lookup_router
 from .audit_logs import router as audit_logs_router
+from .activities import router as activities_router
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -43,6 +44,7 @@ router.include_router(admins_router, dependencies=[Depends(require_super_admin)]
 
 # 분야별 라우터: 권한 표(permissions.py) 기준. 조회는 read, 변경은 write 권한이 필요하다
 router.include_router(users_router, dependencies=[Depends(require_resource("users"))])
+router.include_router(activities_router, dependencies=[Depends(require_resource("users"))])
 router.include_router(clubs_router, dependencies=[Depends(require_resource("clubs"))])
 router.include_router(join_requests_router, dependencies=[Depends(require_resource("joinRequests"))])
 router.include_router(meetings_router, dependencies=[Depends(require_resource("meetings"))])
