@@ -3,15 +3,17 @@
 """
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 import logging
 
 from database import get_db
-from models import User, Club, ClubMembership
+from models import User, Club, ClubMembership, UserActivityLog
 from models import UserStatus
 from schemas import UserResponse, PaginatedResponse, MembershipStatus
 import schemas
-from utils import audit
+from services import admin_user_service as user_svc
+from utils import activity, audit
 from utils.datetime_utils import get_kst_now
 from .deps import get_admin_user
 from .pagination import BulkRequest, bulk_run
@@ -19,6 +21,39 @@ from .pagination import BulkRequest, bulk_run
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["admin-users"])
+
+
+def _last_logins(db: Session, user_ids: list[int]) -> dict[int, UserActivityLog]:
+    """회원별 마지막 LOGIN 활동 (활동 로그 1년 보관 범위 안)"""
+    if not user_ids:
+        return {}
+    latest = (db.query(UserActivityLog.user_id, func.max(UserActivityLog.id).label("id"))
+              .filter(UserActivityLog.user_id.in_(user_ids), UserActivityLog.event_type == "LOGIN")
+              .group_by(UserActivityLog.user_id).subquery())
+    rows = db.query(UserActivityLog).join(latest, UserActivityLog.id == latest.c.id).all()
+    return {r.user_id: r for r in rows}
+
+
+def _detail(db: Session, user: User) -> dict:
+    """상세 응답 (SCR-032 헤더·기본정보·골프). UserResponse 필드 + 초기값·최근 로그인"""
+    last = _last_logins(db, [user.id]).get(user.id)
+    club_count = db.query(ClubMembership).filter(ClubMembership.user_id == user.id,
+                                                 ClubMembership.status == MembershipStatus.ACTIVE).count()
+    return {
+        **user_svc.snapshot(user, ("id", "email", "realname", "nickname", "phone_number", "gender", "provider", "status",
+                                   "average_score", "average_score_init", "handicap", "handicap_init",
+                                   "handicap_update_method", "handicap_calculation_count", "needs_terms_agreement",
+                                   "terms_agreement", "privacy_policy", "privacy_collection", "marketing_consent")),
+        "profile_image": user.profile_image,
+        "birthdate": user.birthdate.date().isoformat() if user.birthdate else None,
+        "email_verified": user.email_verified,
+        "deactivated_at": user.deactivated_at,
+        "created_at": user.created_at,
+        "updated_at": user.updated_at,
+        "club_count": club_count,
+        "last_login_at": last.created_at if last else None,
+        "last_login_device": (last.meta_json or {}).get("device") if last else None,
+    }
 
 
 @router.get("/users", response_model=PaginatedResponse)
@@ -93,8 +128,10 @@ async def get_admin_users(
             logger.error("get_admin_users 중복 user id 감지: count=%s ids=%s 중복=%s", len(ids), ids, list(set(dup)))
             assert False, f"duplicate user ids in response: {list(set(dup))}"
         logger.info("get_admin_users 검증 OK: count=%s page=%s ids_sample=%s", len(ids), page, ids[:20])
+        logins = _last_logins(db, ids)
+        items = [{**u.model_dump(), "last_login_at": logins[u.id].created_at if u.id in logins else None} for u in user_responses]
         return {
-            "data": user_responses,
+            "data": items,
             "total": total_count,
             "page": page,
             "limit": limit,
@@ -199,27 +236,7 @@ async def get_admin_user_detail(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다")
         # 이메일·전화번호·실명이 담긴 상세 조회는 개인정보 열람으로 남긴다
         audit.record("VIEW_PII", "USER", user_id)
-        gender_value = None
-        if hasattr(user, "gender") and user.gender:
-            gender_value = user.gender.value if hasattr(user.gender, "value") else str(user.gender)
-        return UserResponse(
-            id=user.id,
-            email=user.email,
-            realname=getattr(user, "realname", None),
-            nickname=user.nickname,
-            phone_number=getattr(user, "phone_number", None),
-            birthdate=getattr(user, "birthdate", None),
-            gender=gender_value,
-            handicap=float(user.handicap) if user.handicap else None,
-            average_score=user.average_score,
-            provider=user.provider.value if user.provider else None,
-            email_verified=getattr(user, "email_verified", None),
-            status=user.status.value if user.status else None,
-            deactivated_at=getattr(user, "deactivated_at", None),
-            needs_terms_agreement=getattr(user, "needs_terms_agreement", None),
-            created_at=user.created_at,
-            updated_at=user.updated_at,
-        )
+        return _detail(db, user)
     except HTTPException:
         raise
     except Exception as e:
@@ -458,36 +475,40 @@ async def bulk_admin_users(body: BulkRequest, db: Session = Depends(get_db), cur
     return bulk_run(body.ids, one, audit_as=("STATUS_CHANGE", "USER"))
 
 
-@router.post("/users", response_model=UserResponse)
+@router.post("/users", status_code=status.HTTP_201_CREATED)
 async def create_admin_user(
-        user_data: dict,
+        body: user_svc.AdminUserCreate,
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 사용자 생성"""
-    from routers.users import create_user
-    from schemas import UserCreate
+    """관리자 회원 등록 (F-031). 일반(LOCAL) 로그인 계정으로 만든다"""
+    user = user_svc.create_user(db, body)
+    audit.record("CREATE", "USER", user.id, after=user_svc.snapshot(user), reason=body.reason)
+    activity.log(user, "SIGNUP", "관리자 등록", meta={"provider": "LOCAL", "by_admin": True})
+    return _detail(db, user)
 
-    return await create_user(UserCreate(**user_data), db=db, current_user=current_user)
 
-
-@router.put("/users/{user_id}", response_model=UserResponse)
+@router.put("/users/{user_id}")
 async def update_admin_user(
         user_id: int,
-        user_data: dict,
+        body: user_svc.AdminUserUpdate,
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 사용자 수정"""
-    from routers.users import update_user
-    from schemas import UserUpdate
-
-    return await update_user(user_id, UserUpdate(**user_data), db=db, current_user=current_user)
+    """관리자 회원 수정 (F-031). 보낸 항목만 바꾼다"""
+    user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다")
+    before, after = user_svc.update_user(db, user, body)
+    action = "STATUS_CHANGE" if set(after) == {"status"} else "UPDATE"
+    audit.record(action, "USER", user_id, before=before, after=after, reason=body.reason)
+    return _detail(db, user)
 
 
 @router.delete("/users/{user_id}")
 async def delete_admin_user(
         user_id: int,
+        reason: str | None = Query(None, max_length=500),
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
@@ -503,7 +524,7 @@ async def delete_admin_user(
         user.deleted_at = datetime.now()
         user.status = UserStatus.DELETED
         db.commit()
-        audit.record("DELETE", "USER", user_id, before=before, after={"status": UserStatus.DELETED.value})
+        audit.record("DELETE", "USER", user_id, before=before, after={"status": UserStatus.DELETED.value}, reason=reason)
         return {"message": "사용자가 삭제되었습니다"}
     except HTTPException:
         raise
