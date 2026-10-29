@@ -1,9 +1,6 @@
 """
 백오피스 내 프로필 API (모든 관리자)
 """
-import hashlib
-import hmac
-
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -11,6 +8,7 @@ from database import get_db
 from models import Admin
 from utils import audit
 from utils.datetime_utils import get_kst_now
+from utils.passwords import hash_password, verify_password
 
 from .admins import _check_password, _err, _last_logins, _row
 from .deps import get_admin_user
@@ -69,11 +67,11 @@ async def change_admin_password(password_data: dict, db: Session = Depends(get_d
     if new != confirm:
         raise _err(422, "confirm_password", "새 비밀번호와 확인이 일치하지 않습니다")
     a = _me(db, current_user)
-    if not hmac.compare_digest(a.password, hashlib.sha256(current.encode()).hexdigest()):
+    if not verify_password(current, a.password):
         raise _err(400, "current_password", "현재 비밀번호가 올바르지 않습니다")
     if current == new:
         raise _err(422, "new_password", "지금 비밀번호와 다른 비밀번호를 입력해주세요")
-    a.password = hashlib.sha256(new.encode()).hexdigest()
+    a.password = hash_password(new)
     a.updated_at = get_kst_now()
     db.commit()
     audit.record("UPDATE", "ADMIN_PASSWORD", a.id, after={"password": "(본인 변경)"})

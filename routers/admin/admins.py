@@ -5,7 +5,6 @@
 - 마지막 활성 최고 관리자는 강등·비활성·삭제할 수 없다. 자기 자신의 역할·상태도 여기서 바꾸지 않는다
 - 변경은 감사 로그에 전·후 값으로 남긴다 (비밀번호는 값 없이 사실만)
 """
-import hashlib
 import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -17,6 +16,7 @@ from models import Admin, AdminAuditLog, AdminRole, Provider, UserStatus
 from schemas import AdminCreate, AdminPasswordUpdate, AdminUpdate
 from utils import audit
 from utils.datetime_utils import get_kst_now
+from utils.passwords import hash_password
 
 from .deps import get_admin_user
 
@@ -142,7 +142,7 @@ async def create_admin(data: AdminCreate, db: Session = Depends(get_db), current
     _check_password(data.password, "password")
     if db.query(Admin).filter(func.lower(Admin.email) == email, Admin.deleted_at.is_(None)).first():
         raise _err(409, "email", "이미 등록된 이메일입니다")
-    a = Admin(email=email, password=hashlib.sha256(data.password.encode()).hexdigest(), name=data.name.strip(),
+    a = Admin(email=email, password=hash_password(data.password), name=data.name.strip(),
               phone_number=(data.phone_number or "").strip() or None, profile_image=data.profile_image, provider=Provider.LOCAL,
               status=UserStatus.ACTIVE, role=role)
     db.add(a)
@@ -193,7 +193,7 @@ async def update_admin_password_by_admin(admin_id: int, data: AdminPasswordUpdat
     """다른 관리자의 비밀번호 재설정 (감사 로그에는 값 없이 사실만)"""
     a = _get(db, admin_id)
     _check_password(data.new_password, "new_password")
-    a.password = hashlib.sha256(data.new_password.encode()).hexdigest()
+    a.password = hash_password(data.new_password)
     a.updated_at = get_kst_now()
     db.commit()
     audit.record("UPDATE", "ADMIN_PASSWORD", a.id, after={"password": "(재설정)"})
