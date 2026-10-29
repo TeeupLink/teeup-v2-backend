@@ -17,7 +17,7 @@ from schemas import (
     ClubMembershipResponse,
 )
 from routers.auth import get_current_active_user
-from utils import activity
+from utils import activity, admin_notify
 from utils.datetime_utils import get_kst_now
 
 router = APIRouter(prefix="/clubs", tags=["클럽 멤버 관리"])
@@ -622,6 +622,8 @@ async def join_club(
         # 멤버 수는 증가시키지 않음 (승인 후에만 증가)
         db.commit()
         activity.log(current_user, "CLUB_JOIN_REQUEST", f"{club.name} 가입신청", target_type="CLUB", target_id=club.id)
+        admin_notify.notify("JOIN_REQUEST", f"{club.name} 가입신청", f"{current_user.nickname or '회원'}님이 가입을 신청했습니다",
+                            link=f"/clubs/{club.id}/join-requests")
         
         # 클럽 리더/매니저에게 새 회원 가입신청 알림 전송
         try:
