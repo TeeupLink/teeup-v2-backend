@@ -29,7 +29,7 @@ def admin_list_clubs(page: int = Query(1, ge=1),
                      search: str | None = Query(None, max_length=100),
                      type: str | None = Query(None, pattern="^(REGULAR|IRREGULAR)$", description="클럽 유형"),
                      sido_code: str | None = Query(None, max_length=2, description="시도 코드"),
-                     include_deleted: bool = Query(True, description="삭제된 클럽 포함 (기존 화면 호환 기본값. 새 백오피스는 false)"),
+                     include_deleted: bool = Query(False, description="삭제된 클럽 포함"),
                      sort: str | None = Query(None, pattern="^-?(name|member_count|created_at)$", description="기본 -created_at"),
                      current_user: dict = Depends(get_admin_user),
                      db: Session = Depends(get_db)):
@@ -1337,7 +1337,7 @@ async def update_admin_club_member_role(club_id: str,
     """멤버 역할 변경.
 
     LEADER 로 지정하면 리더 교체(_swap_leader)와 같다 — 기존 리더는 MANAGER 가 되어 리더가 둘이 될 수 없다.
-    리더를 MEMBER/MANAGER 로 내리는 것은 기존 백오피스(먼저 강등 → 새 리더 지정)가 쓰므로 교체 배포(#33) 전까지 허용한다.
+    리더를 MEMBER/MANAGER 로 내리면 리더 없는 클럽이 생기므로 막는다 (교체 배포 #33 전에는 예전 화면 때문에 허용했다).
     """
     club = _resolve_club(db, club_id)
     target = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.user_id == user_id).first()
@@ -1351,6 +1351,9 @@ async def update_admin_club_member_role(club_id: str,
         audit.record("UPDATE", "CLUB", club.id, before={"leader_user_ids": previous}, after={"leader_user_ids": [user_id]},
                      reason=role_data.get("reason"), meta={"action": "LEADER_CHANGE", "via": "role"})
         return {"message": "멤버 역할이 LEADER로 변경되었습니다", "success": True}
+    if target.role == ClubRole.LEADER:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail="리더는 강등할 수 없습니다. 리더 교체로 다른 멤버를 리더로 지정하면 지금 리더는 매니저가 됩니다.")
     before = target.role.value if hasattr(target.role, "value") else str(target.role)
     target.role = ClubRole[new_role]
     target.updated_at = get_kst_now()

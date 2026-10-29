@@ -103,7 +103,8 @@ def test_list_counts_filters_sort(env):
     assert [r["name"] for r in client.get(f"{A}/clubs", params={**live, "sido_code": "26"}).json()["data"]] == ["부산"]
     assert [r["name"] for r in client.get(f"{A}/clubs", params={**live, "type": "IRREGULAR"}).json()["data"]] == ["부산"]
     assert [r["name"] for r in client.get(f"{A}/clubs", params={**live, "sort": "member_count"}).json()["data"]] == ["부산", "강남"]
-    assert len(client.get(f"{A}/clubs").json()["data"]) == 3  # 기본값은 기존 화면 호환 (삭제 포함)
+    assert len(client.get(f"{A}/clubs").json()["data"]) == 2  # 기본값은 삭제 제외 (교체 배포 #33 뒤)
+    assert len(client.get(f"{A}/clubs", params={"include_deleted": True}).json()["data"]) == 3
     assert client.get(f"{A}/clubs", params={"sort": "description"}).status_code == 422
 
 
@@ -194,3 +195,15 @@ def test_notice_search_and_category_delete_guard(env):
     assert client.delete(f"{A}/clubs/{c.id}/regulations/categories/{empty.id}").status_code == 200
     db.expire_all()
     assert db.query(Regulation).count() == 1
+
+
+def test_leader_cannot_be_demoted_after_cutover(env):
+    db, as_role = env
+    c, (leader, member) = club_with(db, "강남")
+    client = as_role("CLUB_ADMIN")
+    r = client.put(f"{A}/clubs/{c.id}/members/{leader.id}/role", json={"new_role": "MEMBER"})
+    assert r.status_code == 409 and "리더 교체" in r.json()["detail"]
+    db.expire_all()
+    assert db.query(ClubMembership).filter_by(club_id=c.id, user_id=leader.id).one().role == ClubRole.LEADER
+    # 다른 멤버의 역할 변경은 그대로 된다
+    assert client.put(f"{A}/clubs/{c.id}/members/{member.id}/role", json={"new_role": "MANAGER"}).status_code == 200
