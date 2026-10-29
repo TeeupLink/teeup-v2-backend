@@ -216,6 +216,7 @@ async def get_admin_club_notices(
     club_id: str,
     page: int = 1,
     limit: int = 20,
+    q: str | None = Query(None, max_length=100, description="제목·본문 검색"),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
@@ -224,6 +225,9 @@ async def get_admin_club_notices(
     club = _resolve_club(db, club_id)
     offset = (page - 1) * limit
     notices_query = db.query(ClubNotice).filter(ClubNotice.club_id == club.id)
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        notices_query = notices_query.filter(or_(ClubNotice.title.ilike(like), ClubNotice.content.ilike(like)))
     total = notices_query.count()
     notices = notices_query.order_by(
         ClubNotice.is_important.desc(),
@@ -670,6 +674,11 @@ async def delete_admin_club_regulation_category(
     ).first()
     if not cat:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="카테고리를 찾을 수 없습니다")
+    # 카테고리를 지우면 하위 규정이 CASCADE 로 함께 사라진다 — 비어 있을 때만 (F-046)
+    from models import Regulation
+    left = db.query(Regulation).filter(Regulation.category_id == cat.id).count()
+    if left:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"이 카테고리에 규정이 {left}개 있습니다. 규정을 먼저 옮기거나 삭제해주세요.")
     db.delete(cat)
     db.commit()
     return {"message": "카테고리가 삭제되었습니다", "success": True}
