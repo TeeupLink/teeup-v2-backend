@@ -16,6 +16,7 @@ from .search import router as search_router
 from .admins import router as admins_router
 from .users import router as users_router
 from .dashboard import router as dashboard_router
+from .kpi import router as kpi_router
 from .upload import router as upload_router
 from .profile import router as profile_router
 from .payments import router as payments_router
@@ -63,6 +64,7 @@ router.include_router(audit_logs_router, dependencies=[Depends(require_resource(
 
 # 대시보드/업로드/알림/선택용 조회: 모든 역할 접근 가능 (항목별 범위는 각 엔드포인트가 거른다)
 router.include_router(dashboard_router)
+router.include_router(kpi_router, dependencies=[Depends(require_resource("kpi"))])
 router.include_router(upload_router)
 router.include_router(notifications_router)
 router.include_router(lookup_router)
