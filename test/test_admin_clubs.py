@@ -169,3 +169,28 @@ def test_status_change_validated_and_audited(env):
     assert row.before_json == {"status": "ACTIVE"} and row.after_json == {"status": "INACTIVE"} and row.reason == "운영 중단"
     d = client.get(f"{A}/clubs/{c.id}").json()
     assert d["round_count"] == 1 and d["social_count"] == 0 and d["last_meeting_at"].startswith("2026-11-01")
+
+
+def test_notice_search_and_category_delete_guard(env):
+    from models import ClubNotice, Regulation, RegulationCategory
+
+    db, as_role = env
+    c, (leader, _) = club_with(db, "강남")
+    db.add_all([ClubNotice(club_id=c.id, title="11월 정기 라운딩", content="장소 공지", author_id=leader.id),
+                ClubNotice(club_id=c.id, title="회비 안내", content="11월분 입금", author_id=leader.id)])
+    full, empty = RegulationCategory(club_id=c.id, name="회칙", order=1), RegulationCategory(club_id=c.id, name="빈 카테고리", order=2)
+    db.add_all([full, empty])
+    db.flush()
+    db.add(Regulation(club_id=c.id, category_id=full.id, title="제1조", content="목적", status="ACTIVE", created_by=0))
+    db.commit()
+    client = as_role("CLUB_ADMIN")
+
+    titles = [n["title"] for n in client.get(f"{A}/clubs/{c.id}/notices", params={"q": "11월"}).json()["data"]]
+    assert sorted(titles) == ["11월 정기 라운딩", "회비 안내"]
+    assert [n["title"] for n in client.get(f"{A}/clubs/{c.id}/notices", params={"q": "회비"}).json()["data"]] == ["회비 안내"]
+
+    r = client.delete(f"{A}/clubs/{c.id}/regulations/categories/{full.id}")
+    assert r.status_code == 409 and "1개" in r.json()["detail"]
+    assert client.delete(f"{A}/clubs/{c.id}/regulations/categories/{empty.id}").status_code == 200
+    db.expire_all()
+    assert db.query(Regulation).count() == 1
