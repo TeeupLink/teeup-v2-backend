@@ -251,6 +251,62 @@ def _expense_owner(db: Session, meeting) -> int:
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="정산 작성자로 지정할 회원이 없습니다. 확정 참가자를 먼저 추가해주세요.")
 
 
+class _Participants:
+    """정산 대상 id → MeetingParticipant (모임 안에서).
+
+    정산 내부는 참가자 id(MeetingParticipant.id) 하나로만 다룬다. 회원 id 와 게스트 id 는 서로 다른 테이블 번호라
+    값이 겹칠 수 있어, 예전처럼 or_(user_id == x, guest_id == x) 로 찾으면 다른 사람에게 금액이 붙는다.
+    예전 화면이 보내던 user_id/guest_id 혼합 값(legacy)은 이 모임에서 한 사람으로만 특정될 때만 받는다.
+    """
+
+    def __init__(self, db: Session, meeting_id: int):
+        from models import MeetingParticipant
+
+        self.by_id = {p.id: p for p in db.query(MeetingParticipant).filter(MeetingParticipant.meeting_id == meeting_id).all()}
+        self._legacy: dict[int, set[int]] = {}
+        for p in self.by_id.values():
+            for v in (p.user_id, p.guest_id):
+                if v is not None:
+                    self._legacy.setdefault(int(v), set()).add(p.id)
+
+    def ids(self, values) -> list[int]:
+        """참가자 id 목록 검증 (이 모임 참가자만, 순서 유지·중복 제거)"""
+        out = []
+        for v in values or []:
+            try:
+                pid = int(v)
+            except (TypeError, ValueError):
+                continue
+            if pid in self.by_id and pid not in out:
+                out.append(pid)
+        return out
+
+    def legacy(self, value) -> int | None:
+        try:
+            key = int(value)
+        except (TypeError, ValueError):
+            return None
+        hits = self._legacy.get(key, set())
+        if len(hits) > 1:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                detail=f"정산 대상 {key} 가 회원과 게스트에 모두 해당합니다. 참가자 id(participant_ids)로 보내주세요.")
+        return next(iter(hits), None)
+
+    def legacy_list(self, values) -> list[int]:
+        out = []
+        for v in values or []:
+            if v in (None, "", "UNSETTLED"):
+                continue
+            pid = self.legacy(v)
+            if pid is not None and pid not in out:
+                out.append(pid)
+        return out
+
+    def resolve(self, participant_ids, legacy_ids) -> list[int]:
+        """participant_ids 가 있으면 그것, 없으면 legacy 값"""
+        return self.ids(participant_ids) if participant_ids else self.legacy_list(legacy_ids)
+
+
 class MeetingStatsResponse(BaseModel):
     total_meetings: int
     active_meetings: int
@@ -1672,16 +1728,17 @@ async def create_admin_rounding_settlement(
             settlement_method_val = meeting.settlement_method.value if hasattr(meeting.settlement_method, 'value') else str(meeting.settlement_method)
         use_equal_split = (settlement_method_val != 'INDIVIDUAL')
 
-        def _resolve_participant_ids(participant_ids, fallback_ids):
-            """participant_ids(MeetingParticipant.id) 우선, 없으면 fallback_ids(user_id/guest_id) 사용"""
-            int_ids = [x for x in (participant_ids or []) if isinstance(x, int)]
-            if int_ids:
-                mps = db.query(MeetingParticipant).filter(
-                    MeetingParticipant.meeting_id == meeting_id,
-                    MeetingParticipant.id.in_(int_ids)
-                ).all()
-                return [mp.user_id if mp.user_id else mp.guest_id for mp in mps]
-            return fallback_ids or []
+        parts = _Participants(db, meeting_id)
+        _resolve_participant_ids = parts.resolve
+        green_fee_exempted = parts.legacy_list(green_fee_exempted)
+        cart_fee_exempted = parts.legacy_list(cart_fee_exempted)
+        caddy_fee_exempted = parts.legacy_list(caddy_fee_exempted)
+        green_fee_extra_payer_id = parts.legacy(green_fee_extra_payer_id)
+        cart_fee_extra_payer_id = parts.legacy(cart_fee_extra_payer_id)
+        caddy_fee_extra_payer_id = parts.legacy(caddy_fee_extra_payer_id)
+        # 기타 항목 대상도 참가자 id 로 한 번만 풀어 둔다 (대상 집계·검증·생성이 같은 값을 쓴다)
+        for oi in other_expense_items:
+            oi["_pids"] = parts.resolve(oi.get("participant_ids"), oi.get("participants"))
 
         _green = _resolve_participant_ids(green_fee_participant_ids, green_fee_participants)
         _cart = _resolve_participant_ids(cart_fee_participant_ids, cart_fee_participants)
@@ -1701,9 +1758,7 @@ async def create_admin_rounding_settlement(
             for item in other_expense_items:
                 if bool(item.get("covered_by_fee")):
                     continue
-                for pid in (item.get('participants') or []):
-                    if pid and pid != 'UNSETTLED':
-                        all_settlement_targets.add(pid)
+                all_settlement_targets.update(item["_pids"])
 
         settlement_targets = list(all_settlement_targets)
         target_count = len(settlement_targets)
@@ -1719,13 +1774,13 @@ async def create_admin_rounding_settlement(
             for idx, item in enumerate(other_expense_items):
                 if bool(item.get("covered_by_fee")):
                     continue
-                if not (item.get('participants') or []):
+                if not item["_pids"]:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"기타 비용 항목 {idx + 1}의 정산 대상자를 선택해주세요.")
 
         amount_per_person = Decimal('0') if all_covered_by_fee else (total_cost / target_count if target_count > 0 else Decimal('0'))
 
         _cost_to_split = total_cost if not all_covered_by_fee and target_count > 0 else Decimal('0')
-        _extra_idx = _resolve_extra_payer_index(settlement_targets, settlement_data.get('extra_payer_id'))
+        _extra_idx = _resolve_extra_payer_index(settlement_targets, parts.legacy(settlement_data.get('extra_payer_id')))
         _total_per_person = split_amount_10won(
             _cost_to_split, target_count,
             extra_recipient_indices=[_extra_idx] if _extra_idx is not None else None
@@ -1746,10 +1801,7 @@ async def create_admin_rounding_settlement(
                     continue
                 if amount_idx >= len(amount_list):
                     break
-                mp = db.query(MeetingParticipant).filter(
-                    MeetingParticipant.meeting_id == meeting_id,
-                    or_(MeetingParticipant.user_id == pid, MeetingParticipant.guest_id == pid)
-                ).first()
+                mp = parts.by_id.get(pid)
                 if mp:
                     eip = ExpenseItemParticipant(
                         expense_item_id=expense_item.id,
@@ -1926,10 +1978,8 @@ async def create_admin_rounding_settlement(
             amt = Decimal(str(oi.get('amount', 0)))
             if amt <= 0:
                 continue
-            participant_ids = oi.get('participant_ids') or []
             participant_amounts = oi.get('participant_amounts') or []
-            participants = oi.get('participants') or []
-            resolved = _resolve_participant_ids(participant_ids, participants) if participant_ids or participants else []
+            resolved = oi["_pids"]
             title = oi.get('title') or oi.get('name') or '기타 비용'
             _om = oi.get("memo")
             _om_str = (str(_om).strip() if _om is not None else "") or None
@@ -1956,8 +2006,7 @@ async def create_admin_rounding_settlement(
                     amount_list = [alloc_row[settlement_targets.index(pid)] for pid in resolved]
                     _alloc_idx += 1
                 else:
-                    extra_payer_id = oi.get('extra_payer_id')
-                    extra_idx = _resolve_extra_payer_index(resolved, extra_payer_id)
+                    extra_idx = _resolve_extra_payer_index(resolved, parts.legacy(oi.get('extra_payer_id')))
                     amount_list = split_amount_10won(
                         amt, len(resolved),
                         extra_recipient_indices=[extra_idx] if extra_idx is not None else None
@@ -2011,7 +2060,9 @@ async def create_admin_social_settlement(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="정산이 이미 확정되어 수정할 수 없습니다.")
 
         expense_items_data = settlement_data.get("expense_items", [])
-        settlement_targets = settlement_data.get("settlement_targets", [])
+        # 대상은 참가자 id (예전 화면도 participants[].id 를 보냈다). 회원·게스트 id 로는 찾지 않는다
+        parts = _Participants(db, meeting_id)
+        settlement_targets = parts.ids(settlement_data.get("settlement_targets", []))
         notes = settlement_data.get("notes", "")
         exclude_remaining_amount = settlement_data.get("exclude_remaining_amount", False)
         default_extra_payer_id = settlement_data.get("extra_payer_id")
@@ -2043,15 +2094,7 @@ async def create_admin_social_settlement(
                 pid_int = int(pid) if pid is not None else None
                 if pid_int is None:
                     continue
-                mp = db.query(MeetingParticipant).filter(
-                    MeetingParticipant.meeting_id == meeting_id,
-                ).filter(
-                    or_(
-                        MeetingParticipant.id == pid_int,
-                        MeetingParticipant.user_id == pid_int,
-                        MeetingParticipant.guest_id == pid_int,
-                    ),
-                ).first()
+                mp = parts.by_id.get(pid_int)
                 if mp:
                     eip = ExpenseItemParticipant(
                         expense_item_id=expense_item.id,
