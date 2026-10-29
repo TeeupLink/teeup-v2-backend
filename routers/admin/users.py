@@ -11,8 +11,10 @@ from models import User, Club, ClubMembership
 from models import UserStatus
 from schemas import UserResponse, PaginatedResponse, MembershipStatus
 import schemas
+from utils import audit
 from utils.datetime_utils import get_kst_now
 from .deps import get_admin_user
+from .pagination import BulkRequest, bulk_run
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +197,8 @@ async def get_admin_user_detail(
         user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다")
+        # 이메일·전화번호·실명이 담긴 상세 조회는 개인정보 열람으로 남긴다
+        audit.record("VIEW_PII", "USER", user_id)
         gender_value = None
         if hasattr(user, "gender") and user.gender:
             gender_value = user.gender.value if hasattr(user.gender, "value") else str(user.gender)
@@ -432,6 +436,28 @@ async def get_user_handicap_history(
         )
 
 
+@router.post("/users/bulk")
+async def bulk_admin_users(body: BulkRequest, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """회원 일괄 활성화·비활성화 (API-061). 건별 독립 처리"""
+    target = {"activate": UserStatus.ACTIVE, "deactivate": UserStatus.DEACTIVATED}.get(body.action)
+    if target is None:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="action 은 activate 또는 deactivate 입니다")
+
+    def one(user_id: int) -> None:
+        user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="회원을 찾을 수 없습니다")
+        if user.status == UserStatus.DELETED:
+            raise ValueError("탈퇴한 회원은 상태를 바꿀 수 없습니다")
+        before = {"status": user.status.value if user.status else None}
+        user.status = target
+        user.deactivated_at = get_kst_now() if target == UserStatus.DEACTIVATED else None
+        db.commit()
+        audit.record("STATUS_CHANGE", "USER", user_id, before=before, after={"status": target.value}, reason=body.reason, meta={"bulk": True})
+
+    return bulk_run(body.ids, one, audit_as=("STATUS_CHANGE", "USER"))
+
+
 @router.post("/users", response_model=UserResponse)
 async def create_admin_user(
         user_data: dict,
@@ -470,12 +496,14 @@ async def delete_admin_user(
         user = db.query(User).filter(User.id == user_id, User.deleted_at.is_(None)).first()
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다")
+        before = {"nickname": user.nickname, "status": user.status.value if user.status else None}
         user.original_nickname = user.nickname
         user.nickname = f"탈퇴회원_{int(get_kst_now().timestamp())}"
         user.nickname_locked_until = datetime.now() + timedelta(days=7)
         user.deleted_at = datetime.now()
         user.status = UserStatus.DELETED
         db.commit()
+        audit.record("DELETE", "USER", user_id, before=before, after={"status": UserStatus.DELETED.value})
         return {"message": "사용자가 삭제되었습니다"}
     except HTTPException:
         raise

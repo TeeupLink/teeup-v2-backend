@@ -115,8 +115,11 @@ async def get_inquiry(
             raise HTTPException(status_code=404, detail="문의를 찾을 수 없습니다")
         if inquiry.user_id != current_user.id:
             raise HTTPException(status_code=403, detail="본인의 문의만 조회할 수 있습니다")
-        responses = db.query(InquiryResponse).filter(InquiryResponse.inquiry_id == inquiry_id).order_by(
-            InquiryResponse.created_at).all()
+        # 내부 메모(is_internal)는 운영자 전용이다. 회원에게 내려주지 않는다
+        responses = db.query(InquiryResponse).filter(
+            InquiryResponse.inquiry_id == inquiry_id,
+            InquiryResponse.is_internal.isnot(True),
+        ).order_by(InquiryResponse.created_at).all()
         inquiry_response = InquiryResponseSchema(
             id=inquiry.id,
             user_id=inquiry.user_id,

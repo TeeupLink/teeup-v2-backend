@@ -9,22 +9,12 @@ from pydantic import BaseModel
 
 from database import get_db
 from models import Admin, UserStatus, AdminRole
+from utils import audit
 from utils.jwt_auth import jwt_auth
 
 logger = logging.getLogger(__name__)
 
 security = HTTPBearer()
-
-# 역할별 접근 가능 메뉴 매핑
-ROLE_MENU_ACCESS = {
-    AdminRole.SUPER_ADMIN: ["*"],  # 전체
-    AdminRole.CLUB_ADMIN: ["dashboard", "clubs"],
-    AdminRole.MEETING_ADMIN: ["dashboard", "rounds", "socials"],
-    AdminRole.USER_ADMIN: ["dashboard", "users"],
-    AdminRole.CONTENT_ADMIN: ["dashboard", "notices", "faq", "settings"],
-    AdminRole.SUPPORT_ADMIN: ["dashboard", "inquiries"],
-}
-
 
 class AdminLoginRequest(BaseModel):
     email: str
@@ -84,18 +74,21 @@ def get_admin_user(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="삭제된 관리자 계정입니다")
         if admin.status == UserStatus.DEACTIVATED:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비활성화된 관리자 계정입니다")
-        role = getattr(admin, "role", None) or AdminRole.SUPER_ADMIN
-        return {
+        # 역할이 비어 있으면 권한 없음으로 다룬다 (예전에는 SUPER_ADMIN 으로 간주해 권한 상승 위험이 있었다)
+        role = getattr(admin, "role", None)
+        current = {
             "id": admin.id,
             "email": admin.email,
             "name": admin.name,
             "phone_number": admin.phone_number,
             "status": admin.status.value if admin.status else None,
             "type": "admin",
-            "role": role.value if hasattr(role, "value") else str(role),
+            "role": role.value if hasattr(role, "value") else (str(role) if role else None),
             "created_at": admin.created_at.isoformat() if admin.created_at else None,
             "updated_at": admin.updated_at.isoformat() if admin.updated_at else None,
         }
+        audit.set_actor(current)
+        return current
     except HTTPException:
         raise
     except Exception as e:
@@ -105,8 +98,7 @@ def get_admin_user(
 
 def require_super_admin(current_user: dict = Depends(get_admin_user)) -> dict:
     """슈퍼어드민만 접근 가능"""
-    role = current_user.get("role", "SUPER_ADMIN")
-    if role != AdminRole.SUPER_ADMIN.value:
+    if current_user.get("role") != AdminRole.SUPER_ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="슈퍼어드민 권한이 필요합니다.",
@@ -118,7 +110,7 @@ def require_roles(*allowed_roles: AdminRole):
     """지정된 역할 중 하나라도 있으면 접근 가능"""
 
     def _check(current_user: dict = Depends(get_admin_user)) -> dict:
-        role_str = current_user.get("role", "SUPER_ADMIN")
+        role_str = current_user.get("role")
         if role_str == AdminRole.SUPER_ADMIN.value:
             return current_user
         allowed_values = {r.value for r in allowed_roles}

@@ -8,7 +8,9 @@ from sqlalchemy.orm import Session
 import logging
 
 from database import get_db
+from utils import audit
 from utils.jwt_auth import jwt_auth
+from .permissions import permissions_for
 from .deps import (
     get_admin_user,
     verify_admin_credentials,
@@ -25,8 +27,11 @@ router = APIRouter(tags=["admin-auth"])
 async def admin_login(login_data: AdminLoginRequest, db: Session = Depends(get_db)):
     """백오피스 로그인 - JWT 기반"""
     logger.info(f"Admin login attempt: {login_data.email}")
+    audit.set_actor(email=login_data.email)
     try:
         admin = verify_admin_credentials(login_data.email, login_data.password, db)
+        role = getattr(admin, "role", None)
+        audit.set_actor({"id": admin.id, "email": admin.email, "role": role.value if hasattr(role, "value") else role})
         token_payload = {"id": admin.id, "email": admin.email, "name": admin.name}
         # 관리자 액세스 토큰: 8시간 유효 (업무 시간 동안 세션 유지)
         access_token = jwt_auth.create_access_token(token_payload, expires_delta=timedelta(hours=8))
@@ -93,7 +98,9 @@ async def get_current_admin(current_user: dict = Depends(get_admin_user)):
             "name": current_user.get("name", ""),
             "nickname": current_user.get("name", ""),
             "phone_number": current_user.get("phone_number"),
-            "role": current_user.get("role", "SUPER_ADMIN"),
+            "role": current_user.get("role"),
+            # 프론트 메뉴·라우트 가드가 같은 권한 표를 쓰도록 내려준다
+            "permissions": permissions_for(current_user.get("role")),
             "status": current_user.get("status", "ACTIVE"),
             "created_at": current_user.get("created_at"),
             "updated_at": current_user.get("updated_at"),

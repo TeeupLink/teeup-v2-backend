@@ -7,9 +7,9 @@
 """
 from fastapi import APIRouter, Depends
 
-from .deps import get_admin_user, require_super_admin, require_roles
+from .deps import get_admin_user, require_super_admin
+from .permissions import require_resource
 from .tokens import is_token_used, mark_token_as_used
-from models import AdminRole
 
 from .auth import router as auth_router
 from .search import router as search_router
@@ -27,6 +27,9 @@ from .scores import router as scores_router
 from .clubs import router as clubs_router
 from .meetings import router as meetings_router
 from .faq import router as faq_router
+from .join_requests import router as join_requests_router
+from .lookup import router as lookup_router
+from .audit_logs import router as audit_logs_router
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -38,24 +41,23 @@ router.include_router(search_router)
 # 관리자 CRUD: 슈퍼어드민만
 router.include_router(admins_router, dependencies=[Depends(require_super_admin)])
 
-# 분야별 라우터: 역할별 접근 제어
-router.include_router(users_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.USER_ADMIN))])
-router.include_router(clubs_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.CLUB_ADMIN))])
-router.include_router(meetings_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.MEETING_ADMIN))])
-router.include_router(notices_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.CONTENT_ADMIN))])
-router.include_router(faq_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.CONTENT_ADMIN))])
-router.include_router(terms_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.CONTENT_ADMIN))])
-router.include_router(inquiries_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.SUPPORT_ADMIN))])
+# 분야별 라우터: 권한 표(permissions.py) 기준. 조회는 read, 변경은 write 권한이 필요하다
+router.include_router(users_router, dependencies=[Depends(require_resource("users"))])
+router.include_router(clubs_router, dependencies=[Depends(require_resource("clubs"))])
+router.include_router(join_requests_router, dependencies=[Depends(require_resource("joinRequests"))])
+router.include_router(meetings_router, dependencies=[Depends(require_resource("meetings"))])
+router.include_router(scores_router, dependencies=[Depends(require_resource("meetings"))])
+router.include_router(notices_router, dependencies=[Depends(require_resource("content"))])
+router.include_router(faq_router, dependencies=[Depends(require_resource("content"))])
+router.include_router(terms_router, dependencies=[Depends(require_resource("content"))])
+router.include_router(inquiries_router, dependencies=[Depends(require_resource("inquiries"))])
+router.include_router(payments_router, dependencies=[Depends(require_resource("payments"))])
+router.include_router(audit_logs_router, dependencies=[Depends(require_resource("auditLogs"))])
 
-# 대시보드/업로드/알림: 모든 역할 접근 가능
+# 대시보드/업로드/알림/선택용 조회: 모든 역할 접근 가능 (항목별 범위는 각 엔드포인트가 거른다)
 router.include_router(dashboard_router)
 router.include_router(upload_router)
 router.include_router(notifications_router)
-
-# 스코어: 모임 관리 권한 필요
-router.include_router(scores_router, dependencies=[Depends(require_roles(AdminRole.SUPER_ADMIN, AdminRole.MEETING_ADMIN))])
-
-# 결제: 슈퍼어드민만 (추후 PAYMENT_ADMIN 추가 가능)
-router.include_router(payments_router, dependencies=[Depends(require_super_admin)])
+router.include_router(lookup_router)
 
 __all__ = ["router", "get_admin_user"]

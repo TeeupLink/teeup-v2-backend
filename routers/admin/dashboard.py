@@ -101,6 +101,54 @@ async def get_admin_dashboard(
         )
 
 
+@router.get("/dashboard/todo")
+async def get_dashboard_todo(db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """
+    오늘 처리할 일 (API-020). 호출자 권한 밖 항목은 null.
+    각 숫자는 대시보드 카드가 여는 목록의 total 과 같아야 한다.
+    """
+    from models import ContentReport, Inquiry, InquiryStatus, MembershipStatus, ReportStatus
+    from schemas import MeetingType
+
+    from .permissions import can
+
+    role = current_user.get("role")
+    result: dict[str, int | None] = {
+        "join_requests": None,
+        "unanswered_inquiries": None,
+        "today_rounds": None,
+        "pending_reports": None,
+    }
+    if can(role, "joinRequests"):
+        result["join_requests"] = (
+            db.query(ClubMembership)
+            .join(Club, Club.id == ClubMembership.club_id)
+            .join(User, User.id == ClubMembership.user_id)
+            .filter(ClubMembership.status == MembershipStatus.PENDING, Club.deleted_at.is_(None), User.deleted_at.is_(None))
+            .count()
+        )
+    if can(role, "inquiries"):
+        result["unanswered_inquiries"] = (
+            db.query(Inquiry).filter(Inquiry.status.in_([InquiryStatus.PENDING, InquiryStatus.SUBMITTED])).count()
+        )
+    if can(role, "meetings"):
+        now = get_kst_now()
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        result["today_rounds"] = (
+            db.query(Meeting)
+            .filter(
+                Meeting.meeting_type == MeetingType.ROUND,
+                Meeting.meeting_time >= start,
+                Meeting.meeting_time < start + timedelta(days=1),
+                Meeting.status != "CANCELED",
+            )
+            .count()
+        )
+    if can(role, "reports"):
+        result["pending_reports"] = db.query(ContentReport).filter(ContentReport.status == ReportStatus.PENDING).count()
+    return result
+
+
 @router.get("/dashboard/stats")
 async def get_dashboard_stats(
     db: Session = Depends(get_db),
@@ -116,7 +164,9 @@ async def get_dashboard_stats(
         today = get_kst_now()
         start_of_week = (today - timedelta(days=today.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
         weekly_rounds = db.query(Meeting).filter(
-            Meeting.meeting_type == MeetingType.ROUND, Meeting.created_at >= start_of_week
+            Meeting.meeting_type == MeetingType.ROUND,
+            Meeting.meeting_time >= start_of_week,
+            Meeting.meeting_time < start_of_week + timedelta(days=7),
         ).count()
         return {"total_users": total_users, "total_clubs": total_clubs, "total_meetings": total_meetings, "weekly_rounds": weekly_rounds}
     except Exception as e:
