@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import Admin, UserStatus, AdminRole
 from utils import audit
+from utils.passwords import hash_password, needs_rehash, verify_password
 from utils.jwt_auth import jwt_auth
 
 logger = logging.getLogger(__name__)
@@ -28,20 +29,31 @@ class AdminLoginResponse(BaseModel):
     user: dict
 
 
+def upgrade_admin_hash(db: Session, admin: Admin, password: str) -> None:
+    """로그인에 성공한 예전 형식(SHA-256) 비밀번호를 PBKDF2 로 바꿔 저장한다. 실패해도 로그인은 막지 않는다"""
+    if not needs_rehash(admin.password):
+        return
+    try:
+        admin.password = hash_password(password)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"관리자 비밀번호 해시 전환 실패 (admin={admin.id}): {e}")
+
+
 def verify_admin_credentials(email: str, password: str, db: Session) -> Admin:
     """관리자 인증 확인"""
     try:
         admin = db.query(Admin).filter(Admin.email == email, Admin.deleted_at.is_(None)).first()
         if not admin:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보가 올바르지 않습니다")
-        import hashlib
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
-        if admin.password != password_hash:
+        if not verify_password(password, admin.password):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="인증 정보가 올바르지 않습니다")
         if admin.status == UserStatus.DELETED:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="삭제된 관리자 계정입니다")
         if admin.status == UserStatus.DEACTIVATED:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비활성화된 관리자 계정입니다")
+        upgrade_admin_hash(db, admin, password)
         return admin
     except HTTPException:
         raise

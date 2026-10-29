@@ -6,6 +6,7 @@ from typing import Optional, Literal
 from datetime import datetime, timedelta, timezone
 from utils import activity
 from utils.datetime_utils import get_kst_now, get_kst_date
+from utils.passwords import verify_password
 import hashlib
 import re
 import logging
@@ -451,13 +452,15 @@ async def login(
     password_hash = hashlib.sha256(password.encode()).hexdigest()
     refresh_expire_delta = get_refresh_expire_delta(client_type)
 
-    # 1) Admin 우선 로그인
+    # 1) Admin 우선 로그인 (관리자는 PBKDF2, 예전 SHA-256 은 성공 시 전환)
     admin = db.query(Admin).filter(Admin.email == email, Admin.deleted_at.is_(None)).first()
-    if admin and admin.password == password_hash:
+    if admin and verify_password(password, admin.password):
         if admin.status == UserStatus.DELETED:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="삭제된 관리자 계정입니다.")
         if admin.status == UserStatus.DEACTIVATED:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="비활성화된 관리자 계정입니다.")
+        from routers.admin.deps import upgrade_admin_hash
+        upgrade_admin_hash(db, admin, password)
 
         token_payload = _build_login_token_payload(
             user_id=admin.id,

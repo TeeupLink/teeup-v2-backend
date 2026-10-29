@@ -27,6 +27,7 @@ from routers.admin.deps import get_admin_user  # noqa: E402
 from schemas import MeetingType  # noqa: E402
 from utils import activity, admin_notify, audit, notification_service  # noqa: E402
 from utils.audit import AuditMiddleware  # noqa: E402
+from utils.passwords import verify_password  # noqa: E402
 
 A = "/api/v1/admin"
 PW = "Teeup!2026"
@@ -148,7 +149,7 @@ def test_password_reset_and_delete_are_audited_without_values(env):
     assert c.put(f"{A}/admins/3/password", json={"new_password": "short"}).status_code == 422
     assert c.put(f"{A}/admins/3/password", json={"new_password": "Golf#2026x"}).status_code == 200
     db.expire_all()
-    assert db.get(Admin, 3).password == sha("Golf#2026x")
+    assert verify_password("Golf#2026x", db.get(Admin, 3).password) and not db.get(Admin, 3).password.startswith("Golf")
     row = audits(db, target_type="ADMIN_PASSWORD")[0]
     assert "Golf" not in str(row.after_json)
     assert c.delete(f"{A}/admins/3", params={"reason": "퇴사"}).status_code == 200
@@ -173,7 +174,7 @@ def test_profile_real_role_and_password_field_errors(env):
     assert r.status_code == 400 and r.json()["detail"][0]["field"] == "current_password"
     assert pw(PW, "Golf#2026x", "Golf#2026x").status_code == 200
     db.expire_all()
-    assert db.get(Admin, 3).password == sha("Golf#2026x")
+    assert verify_password("Golf#2026x", db.get(Admin, 3).password) and not db.get(Admin, 3).password.startswith("Golf")
 
 
 def test_search_is_scoped_by_role_and_links_new_routes(env):
