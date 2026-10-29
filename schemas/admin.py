@@ -23,11 +23,11 @@ class AdminResponse(BaseModel):
 class AdminCreate(BaseModel):
     """관리자 생성"""
     email: str = Field(..., description="이메일")
-    password: str = Field(..., min_length=6, description="비밀번호")
+    password: str = Field(..., description="비밀번호 (8자 이상, 영문·숫자·특수문자)")
     name: str = Field(..., description="관리자 이름")
     phone_number: str | None = Field(None, description="전화번호")
     profile_image: str | None = Field(None, description="프로필 이미지 URL")
-    role: str | None = Field("SUPER_ADMIN", description="역할 (SUPER_ADMIN, CLUB_ADMIN, MEETING_ADMIN, USER_ADMIN, CONTENT_ADMIN, SUPPORT_ADMIN)")
+    role: str | None = Field(None, description="역할 (SUPER_ADMIN, CLUB_ADMIN, MEETING_ADMIN, USER_ADMIN, CONTENT_ADMIN, SUPPORT_ADMIN). 필수")
 
 
 class AdminUpdate(BaseModel):
@@ -41,7 +41,7 @@ class AdminUpdate(BaseModel):
 
 class AdminPasswordUpdate(BaseModel):
     """관리자 비밀번호 변경 (다른 관리자가 변경)"""
-    new_password: str = Field(..., min_length=6, description="새 비밀번호")
+    new_password: str = Field(..., description="새 비밀번호 (8자 이상, 영문·숫자·특수문자)")
 # 백오피스 사용자 상세페이지용 스키마
 class UserMeetingItem(BaseModel):
     """사용자 참가 모임 정보"""

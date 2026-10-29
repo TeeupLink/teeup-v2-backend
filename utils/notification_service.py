@@ -312,36 +312,19 @@ def create_inquiry_response_notification(
 
 def create_admin_notification(
     db: Session,
-    notification_type: str,  # "NEW_CLUB_APPLICATION", "NEW_INQUIRY"
+    notification_type: str,
     title: str,
-    content: str
+    content: str,
+    link: str = None,
 ):
-    """관리자용 알림 (모든 관리자에게 전송)"""
-    try:
-        # 모든 관리자 조회
-        from models import Admin
-        admins = db.query(Admin).filter(
-            Admin.deleted_at.is_(None)
-        ).all()
-        
-        notifications = []
-        for admin in admins:
-            notification = create_notification(
-                db=db,
-                user_id=admin.id,
-                notification_type=NotificationType.SYSTEM,
-                title=title,
-                content=content,
-                category="system",
-            )
-            notifications.append(notification)
-        
-        logger.info(f"관리자 알림 생성 완료 - {len(notifications)}명에게 전송")
-        return notifications
-        
-    except Exception as e:
-        logger.error(f"관리자 알림 생성 실패 - error: {str(e)}")
-        raise
+    """관리자 알림 벨로 보낸다 (utils.admin_notify).
+
+    예전 구현은 관리자 id 를 회원 id 로 써서 회원 알림(notifications)을 만들고 푸시까지 보냈다 —
+    번호가 같은 회원이 관리자용 알림을 받았다. db 인자는 호환을 위해 남겨 두고 쓰지 않는다.
+    """
+    from utils import admin_notify
+
+    return admin_notify.notify(notification_type, title, content, link)
 
 
 def create_inquiry_admin_notification(
@@ -352,14 +335,12 @@ def create_inquiry_admin_notification(
     inquiry_id: int
 ):
     """새 문의 등록 관리자 알림"""
-    title = f"새 문의가 등록되었습니다"
-    content = f"'{user_name}'님이 '{inquiry_type}' 문의를 등록했습니다.\n\n제목: {inquiry_title}"
-    
     return create_admin_notification(
         db=db,
-        notification_type="NEW_INQUIRY",
-        title=title,
-        content=content
+        notification_type="INQUIRY",
+        title="새 문의가 등록되었습니다",
+        content=f"{user_name}님 · {inquiry_title}",
+        link=f"/inquiries/{inquiry_id}",
     )
 
 def create_club_membership_notification(
