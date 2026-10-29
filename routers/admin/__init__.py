@@ -26,6 +26,7 @@ from .notifications import router as notifications_router
 from .scores import router as scores_router
 from .clubs import router as clubs_router
 from .meetings import router as meetings_router
+from .rounds import router as rounds_router
 from .faq import router as faq_router
 from .join_requests import router as join_requests_router
 from .lookup import router as lookup_router
@@ -47,6 +48,8 @@ router.include_router(users_router, dependencies=[Depends(require_resource("user
 router.include_router(activities_router, dependencies=[Depends(require_resource("users"))])
 router.include_router(clubs_router, dependencies=[Depends(require_resource("clubs"))])
 router.include_router(join_requests_router, dependencies=[Depends(require_resource("joinRequests"))])
+# rounds 는 meetings 의 /scores/{participant_id} 보다 먼저 (/scores/bulk)
+router.include_router(rounds_router, dependencies=[Depends(require_resource("meetings"))])
 router.include_router(meetings_router, dependencies=[Depends(require_resource("meetings"))])
 router.include_router(scores_router, dependencies=[Depends(require_resource("meetings"))])
 router.include_router(notices_router, dependencies=[Depends(require_resource("content"))])

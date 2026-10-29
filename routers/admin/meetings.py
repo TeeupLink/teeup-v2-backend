@@ -337,6 +337,10 @@ async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="�
                                       status: str | None = Query(None, description="모임 상태 필터"),
                                       search: str | None = Query(None, description="검색어"),
                                       club_id: int | None = Query(None, description="클럽 ID 필터"),
+                                      date: str | None = Query(None, pattern="^today$", description="today: 오늘 모임 (대시보드 링크)"),
+                                      date_from: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$", description="모임일 시작 (포함)"),
+                                      date_to: str | None = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$", description="모임일 끝 (포함)"),
+                                      sort: str | None = Query(None, pattern="^-?(meeting_time|created_at)$", description="기본 -meeting_time"),
                                       current_user: dict = Depends(get_admin_user),
                                       db: Session = Depends(get_db)):
     """관리자용 라운딩 모임 목록 조회 (모든 클럽 조회 가능)"""
@@ -361,11 +365,22 @@ async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="�
                                 Meeting.location.contains(search))
             query = query.filter(search_filter)
 
+        # 모임일 기간 (KST 날짜 기준, 끝 날짜 포함)
+        if date == "today":
+            date_from = date_to = get_kst_now().strftime("%Y-%m-%d")
+        if date_from:
+            query = query.filter(Meeting.meeting_time >= datetime.strptime(date_from, "%Y-%m-%d"))
+        if date_to:
+            query = query.filter(Meeting.meeting_time < datetime.strptime(date_to, "%Y-%m-%d") + timedelta(days=1))
+
         # 총 개수 조회
         total = query.count()
 
-        # 페이지네이션 (최신순)
-        meetings = query.order_by(desc(Meeting.created_at)).offset((page - 1) * limit).limit(limit).all()
+        # 정렬: 기본 모임일 최신순, 같은 값은 id 로 고정
+        sort_key = (sort or "-meeting_time").lstrip("-")
+        column = Meeting.meeting_time if sort_key == "meeting_time" else Meeting.created_at
+        ordering = column.asc() if sort and not sort.startswith("-") else desc(column)
+        meetings = query.order_by(ordering, desc(Meeting.id)).offset((page - 1) * limit).limit(limit).all()
 
         # 응답 데이터 구성
         meeting_data = []
@@ -373,6 +388,10 @@ async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="�
             # 참가자 수 조회
             participant_count = db.query(MeetingParticipant).filter(
                 MeetingParticipant.meeting_id == meeting.id
+            ).count()
+            confirmed_count = db.query(MeetingParticipant).filter(
+                MeetingParticipant.meeting_id == meeting.id,
+                MeetingParticipant.status == "CONFIRMED",
             ).count()
 
             # 개설자(생성자) 조회
@@ -429,6 +448,8 @@ async def admin_get_rounding_meetings(page: int = Query(1, ge=1, description="�
                 str(meeting.club.name) if meeting.club and meeting.club.name else "",
                 "participant_count":
                 int(participant_count),
+                "confirmed_count":
+                int(confirmed_count),
                 "creator":
                 creator_info,
                 "created_at":
@@ -570,17 +591,27 @@ async def get_admin_meeting_teams(
         if getattr(meeting.meeting_type, "value", str(meeting.meeting_type)) != "ROUND":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="라운딩 모임만 팀 편성을 지원합니다.")
 
-        teams = db.query(Team).filter(Team.meeting_id == meeting_id).all()
+        teams = db.query(Team).filter(Team.meeting_id == meeting_id).order_by(Team.tee_off_order, Team.id).all()
+        # 팀 멤버 → 참가자 id (멤버 지정 API 는 참가자 id 로 받는다)
+        pid_of = {("g", p.guest_id) if p.guest_id else ("u", p.user_id): p.id
+                  for p in db.query(MeetingParticipant).filter(MeetingParticipant.meeting_id == meeting_id).all()}
         result = []
         for team in teams:
             members = []
-            for tm in db.query(TeamMember).filter(TeamMember.team_id == team.id).all():
+            for tm in db.query(TeamMember).filter(TeamMember.team_id == team.id).order_by(TeamMember.order, TeamMember.id).all():
+                ids = {"participant_id": pid_of.get(("g", tm.guest_id) if tm.guest_id else ("u", tm.user_id)),
+                       "user_id": tm.user_id, "guest_id": tm.guest_id}
                 if tm.guest_id:
                     g = db.query(Guest).filter(Guest.id == tm.guest_id).first()
-                    members.append({"user_name": g.name if g else "게스트", "user_nickname": g.name if g else "게스트"})
+                    members.append({**ids, "user_name": g.name if g else "게스트", "user_nickname": g.name if g else "게스트", "is_guest": True,
+                                    "gender": getattr(g.gender, "value", None) if g else None,
+                                    "handicap": float(g.handicap) if g and g.handicap is not None else None})
                 elif tm.user_id:
                     u = db.query(User).filter(User.id == tm.user_id).first()
-                    members.append({"user_name": u.realname or u.nickname if u else "-", "user_nickname": u.nickname if u else "-"})
+                    members.append({**ids, "user_name": u.realname or u.nickname if u else "-", "user_nickname": u.nickname if u else "-", "is_guest": False,
+                                    "gender": getattr(u.gender, "value", None) if u else None,
+                                    "handicap": float(u.handicap) if u and u.handicap is not None else None,
+                                    "average_score": u.average_score if u else None})
             result.append({
                 "id": team.id, "name": team.name or f"팀 {team.id}",
                 "meeting_id": team.meeting_id, "members": members,
@@ -904,81 +935,20 @@ async def put_admin_meeting_participant_score(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    """참가자 라운딩 총타 저장·수정 (UserScoreHistory, 회원만)"""
+    """참가자 라운딩 총타 저장·수정 (UserScoreHistory, 회원만). 일괄 저장과 같은 로직 (rounds.save_score)"""
+    from models import MeetingParticipant
+
+    from .rounds import get_round, refresh_handicap, save_score
+
+    meeting = get_round(db, meeting_id)
     try:
-        from decimal import Decimal
-
-        from models import Meeting, MeetingParticipant, UserScoreHistory
-        from schemas import MeetingType
-        from utils.handicap_calculator import get_user_handicap_for_formation, update_user_handicap
-
-        meeting = db.query(Meeting).filter(Meeting.id == meeting_id).first()
-        if not meeting:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="모임을 찾을 수 없습니다.")
-        _mt = getattr(meeting.meeting_type, "value", meeting.meeting_type)
-        if _mt != MeetingType.ROUND.value:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="라운딩 모임만 점수를 저장할 수 있습니다.")
-
-        p = (
-            db.query(MeetingParticipant)
-            .filter(
-                MeetingParticipant.id == participant_id,
-                MeetingParticipant.meeting_id == meeting_id,
-            )
-            .first()
-        )
-        if not p:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="참가자를 찾을 수 없습니다.")
-        if not p.user_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="게스트 참가자는 총타를 등록할 수 없습니다.",
-            )
-
-        gross = int(data.score)
-        handicap_used = get_user_handicap_for_formation(db, p.user_id)
-        if handicap_used is None:
-            handicap_used = Decimal("0")
-        played_at = meeting.meeting_time or get_kst_now()
-        net_score = Decimal(str(gross)) - handicap_used
-
-        existing = (
-            db.query(UserScoreHistory)
-            .filter(
-                UserScoreHistory.user_id == p.user_id,
-                UserScoreHistory.meeting_id == meeting_id,
-            )
-            .first()
-        )
-        if existing:
-            existing.gross_score = gross
-            existing.net_score = net_score
-            existing.handicap_used = handicap_used
-        else:
-            db.add(
-                UserScoreHistory(
-                    user_id=p.user_id,
-                    meeting_id=meeting_id,
-                    gross_score=gross,
-                    net_score=net_score,
-                    handicap_used=handicap_used,
-                    played_at=played_at,
-                )
-            )
-        db.commit()
-
-        try:
-            update_user_handicap(db=db, user_id=p.user_id, score_count=5)
-        except Exception as ex:
-            logger.warning(f"관리자 점수 저장 후 핸디캡 갱신 실패: {ex}")
-
-        return {"success": True, "participant_id": participant_id, "score": gross}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"관리자 모임 점수 저장 중 오류: {str(e)}", exc_info=True)
+        save_score(db, meeting, participant_id, int(data.score))
+    except ValueError as e:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    uid = db.query(MeetingParticipant.user_id).filter(MeetingParticipant.id == participant_id).scalar()
+    refresh_handicap(db, uid)
+    return {"success": True, "participant_id": participant_id, "score": int(data.score)}
 
 
 @router.get("/meetings/{meeting_id}/participants/{participant_id}/hole-scores", response_model=None)
