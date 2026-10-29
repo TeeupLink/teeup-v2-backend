@@ -27,9 +27,6 @@ from schemas import (
     UserResponse,
     MessageResponse,
     NotificationResponse,
-    NotificationSettingsResponse,
-    NotificationSettingsUpdate,
-    PaymentResponse,
     SubscriptionResponse,
     PaginatedResponse,
     MeetingType,
@@ -934,183 +931,6 @@ async def mark_all_notifications_as_read(db: Session = Depends(get_db),
         )
 
 
-@router.get("/notification-settings", response_model=NotificationSettingsResponse)
-async def get_notification_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """알림 설정 조회"""
-    try:
-        logger.info(f"알림 설정 조회 시작 - user_id: {current_user.id}")
-
-        from models import NotificationSettings
-
-        # 알림 설정 조회
-        settings = (db.query(NotificationSettings).filter(
-            NotificationSettings.user_id == current_user.id).first())
-
-        # 설정이 없으면 기본값으로 생성
-        if not settings:
-            import secrets
-            import string
-
-            chars = string.ascii_lowercase + string.digits
-            settings_id = "".join(secrets.choice(chars) for _ in range(20))
-
-            settings = NotificationSettings(id=settings_id, user_id=current_user.id)
-            db.add(settings)
-            db.commit()
-            db.refresh(settings)
-
-        settings_response = NotificationSettingsResponse(
-            id=settings.id,
-            user_id=settings.user_id,
-            meeting_reminder=settings.meeting_reminder,
-            payment_notifications=settings.payment_notifications,
-            club_invitations=settings.club_invitations,
-            meeting_cancellations=settings.meeting_cancellations,
-            new_notices=settings.new_notices,
-            system_notifications=settings.system_notifications,
-            push_enabled=settings.push_enabled,
-            email_enabled=settings.email_enabled,
-            sms_enabled=settings.sms_enabled,
-            quiet_hours_start=settings.quiet_hours_start,
-            quiet_hours_end=settings.quiet_hours_end,
-            created_at=settings.created_at,
-            updated_at=settings.updated_at,
-        )
-
-        logger.info(f"알림 설정 조회 완료 - user_id: {current_user.id}")
-        return settings_response
-
-    except Exception as e:
-        logger.error(f"알림 설정 조회 중 오류: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"서버 오류: {str(e)}",
-        )
-
-
-@router.put("/notification-settings", response_model=NotificationSettingsResponse)
-async def update_notification_settings(
-        settings_data: NotificationSettingsUpdate,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user),
-):
-    """알림 설정 수정"""
-    try:
-        logger.info(f"알림 설정 수정 시작 - user_id: {current_user.id}")
-
-        from models import NotificationSettings
-
-        # 알림 설정 조회
-        settings = (db.query(NotificationSettings).filter(
-            NotificationSettings.user_id == current_user.id).first())
-
-        # 설정이 없으면 생성
-        if not settings:
-            import secrets
-            import string
-
-            chars = string.ascii_lowercase + string.digits
-            settings_id = "".join(secrets.choice(chars) for _ in range(20))
-
-            settings = NotificationSettings(id=settings_id, user_id=current_user.id)
-            db.add(settings)
-
-        # 설정 업데이트
-        update_data = settings_data.dict(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(settings, field, value)
-
-        db.commit()
-        db.refresh(settings)
-
-        settings_response = NotificationSettingsResponse(
-            id=settings.id,
-            user_id=settings.user_id,
-            meeting_reminder=settings.meeting_reminder,
-            payment_notifications=settings.payment_notifications,
-            club_invitations=settings.club_invitations,
-            meeting_cancellations=settings.meeting_cancellations,
-            new_notices=settings.new_notices,
-            system_notifications=settings.system_notifications,
-            push_enabled=settings.push_enabled,
-            email_enabled=settings.email_enabled,
-            sms_enabled=settings.sms_enabled,
-            quiet_hours_start=settings.quiet_hours_start,
-            quiet_hours_end=settings.quiet_hours_end,
-            created_at=settings.created_at,
-            updated_at=settings.updated_at,
-        )
-
-        logger.info(f"알림 설정 수정 완료 - user_id: {current_user.id}")
-        return settings_response
-
-    except Exception as e:
-        logger.error(f"알림 설정 수정 중 오류: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"서버 오류: {str(e)}",
-        )
-
-
-@router.get("/payments", response_model=list[PaymentResponse])
-async def get_my_payments(
-        page: int = 1,
-        limit: int = 20,
-        status_filter: str | None = None,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_active_user),
-):
-    """내 결제 내역 조회"""
-    try:
-        logger.info(f"내 결제 내역 조회 시작 - user_id: {current_user.id}")
-
-        from models import Payment, PaymentStatus
-
-        # 페이지네이션 계산
-        offset = (page - 1) * limit
-
-        # 결제 내역 조회 쿼리
-        query = db.query(Payment).filter(Payment.user_id == current_user.id)
-
-        if status_filter:
-            query = query.filter(Payment.status == PaymentStatus(status_filter))
-
-        payments = (query.order_by(Payment.created_at.desc()).offset(offset).limit(limit).all())
-
-        payment_responses = []
-        for payment in payments:
-            payment_response = PaymentResponse(
-                id=payment.id,
-                user_id=payment.user_id,
-                subscription_id=payment.subscription_id,
-                amount=float(payment.amount) if payment.amount else 0.0,
-                currency=payment.currency,
-                status=payment.status.value if payment.status else None,
-                payment_method=(payment.payment_method.value if payment.payment_method else None),
-                payment_key=payment.payment_key,
-                order_id=payment.order_id,
-                order_name=payment.order_name,
-                transaction_id=payment.transaction_id,
-                paid_at=payment.paid_at,
-                canceled_at=payment.canceled_at,
-                cancel_reason=payment.cancel_reason,
-                description=payment.description,
-                created_at=payment.created_at,
-                updated_at=payment.updated_at,
-            )
-            payment_responses.append(payment_response)
-
-        logger.info(f"내 결제 내역 조회 완료 - 총 {len(payment_responses)}개")
-        return payment_responses
-
-    except Exception as e:
-        logger.error(f"내 결제 내역 조회 중 오류: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"서버 오류: {str(e)}",
-        )
-
-
 @router.get("/subscriptions", response_model=list[SubscriptionResponse])
 async def get_my_subscriptions(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
     """내 구독/요금제 이용내역 조회"""
@@ -1130,12 +950,12 @@ async def get_my_subscriptions(db: Session = Depends(get_db), current_user: User
                 user_id=subscription.user_id,
                 plan_id=subscription.plan_id,
                 plan_name=plan.name,
-                status=subscription.status.value if subscription.status else None,
+                # subscriptions.status 는 Enum 이 아니라 String(50) 이다.
+                # .value 를 읽으면 AttributeError 가 난다.
+                status=subscription.status,
                 start_date=subscription.start_date,
                 end_date=subscription.end_date,
                 next_billing_date=subscription.next_billing_date,
-                canceled_at=subscription.canceled_at,
-                cancel_reason=subscription.cancel_reason,
                 created_at=subscription.created_at,
                 updated_at=subscription.updated_at,
             )
