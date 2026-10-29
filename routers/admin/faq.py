@@ -3,8 +3,9 @@
 """
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 import logging
 
 from database import get_db
@@ -14,6 +15,7 @@ from schemas import (
     FAQCreate, FAQUpdate, FAQCategoryCreate, FAQCategoryUpdate,
     MessageResponse,
 )
+from utils import audit
 from .deps import get_admin_user
 
 logger = logging.getLogger(__name__)
@@ -45,7 +47,9 @@ async def admin_faq_categories_api(
     """FAQ 카테고리 목록 조회"""
     _ensure_admin(admin_data)
     cats = db.query(FAQCategory).order_by(FAQCategory.order.asc()).all()
-    return [FAQCategoryResponse(id=c.id, title=c.title, order=c.order, is_active=c.is_active, created_at=c.created_at, updated_at=c.updated_at) for c in cats]
+    counts = dict(db.query(FAQ.category_id, func.count(FAQ.id)).filter(FAQ.is_deleted == False).group_by(FAQ.category_id).all())  # noqa: E712
+    return [FAQCategoryResponse(id=c.id, title=c.title, order=c.order, is_active=c.is_active, faq_count=counts.get(c.id, 0),
+                                created_at=c.created_at, updated_at=c.updated_at) for c in cats]
 
 
 @router.post("/faq-categories", response_model=MessageResponse)
@@ -134,16 +138,21 @@ async def admin_faq_list_api(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     search: str | None = None,
-    category_id: str | None = None,
+    category_id: str | None = Query(None, description="카테고리 id, none 이면 미분류"),
+    is_active: bool | None = Query(None, description="공개 여부"),
     db: Session = Depends(get_db),
     admin_data: dict = Depends(get_admin_user),
 ):
-    """FAQ 목록 조회"""
+    """FAQ 목록 조회 (카테고리 안 순서대로)"""
     _ensure_admin(admin_data)
     q = db.query(FAQ).outerjoin(FAQCategory, FAQ.category_id == FAQCategory.id).filter(FAQ.is_deleted == False)
     if search:
         q = q.filter(or_(FAQ.question.contains(search), FAQ.answer.contains(search)))
-    if category_id and str(category_id).strip():
+    if is_active is not None:
+        q = q.filter(FAQ.is_active == is_active)
+    if category_id == "none":
+        q = q.filter(FAQ.category_id.is_(None))
+    elif category_id and str(category_id).strip():
         try:
             q = q.filter(FAQ.category_id == int(category_id))
         except ValueError:
@@ -224,8 +233,9 @@ async def admin_faq_update_api(
         if not a:
             raise HTTPException(status_code=400, detail="답변은 필수입니다.")
         faq.answer = a
-    if data.category_id is not None:
-        faq.category_id = data.category_id if data.category_id else None
+    if "category_id" in data.model_fields_set:
+        # null 이면 미분류로 옮긴다 (예전에는 null 을 보내도 무시됐다)
+        faq.category_id = data.category_id or None
     if data.order is not None:
         faq.order = int(data.order)
     if data.is_active is not None:
@@ -248,7 +258,36 @@ async def admin_faq_delete_api(
     faq.is_deleted = True
     faq.deleted_at = datetime.now()
     db.commit()
+    audit.record("DELETE", "FAQ", faq_id, before={"question": faq.question, "category_id": faq.category_id, "is_active": faq.is_active})
     return MessageResponse(message="FAQ가 삭제되었습니다.", success=True)
+
+
+class FAQReorder(BaseModel):
+    ids: list[int] = Field(..., min_length=1, max_length=500, description="새 순서대로 나열한 FAQ id (같은 카테고리)")
+
+
+@router.put("/faq-order", response_model=MessageResponse)
+async def admin_faq_reorder_api(
+    data: FAQReorder,
+    db: Session = Depends(get_db),
+    admin_data: dict = Depends(get_admin_user),
+):
+    """한 카테고리 안의 FAQ 순서를 한 번에 바꾼다 (위·아래 이동을 요청 두 번으로 나누지 않도록)"""
+    _ensure_admin(admin_data)
+    if len(set(data.ids)) != len(data.ids):
+        raise HTTPException(status_code=422, detail="같은 FAQ 가 두 번 들어 있습니다.")
+    faqs = {f.id: f for f in db.query(FAQ).filter(FAQ.id.in_(data.ids), FAQ.is_deleted == False).all()}  # noqa: E712
+    if len(faqs) != len(data.ids):
+        raise HTTPException(status_code=404, detail="FAQ를 찾을 수 없습니다.")
+    if len({f.category_id for f in faqs.values()}) > 1:
+        raise HTTPException(status_code=422, detail="같은 카테고리의 FAQ만 순서를 바꿀 수 있습니다.")
+    before = {fid: faqs[fid].order for fid in data.ids}
+    for i, fid in enumerate(data.ids, start=1):
+        faqs[fid].order = i
+    db.commit()
+    audit.record("UPDATE", "FAQ_ORDER", next(iter(faqs.values())).category_id, before={"order": before},
+                 after={"order": {fid: i for i, fid in enumerate(data.ids, start=1)}})
+    return MessageResponse(message="FAQ 순서를 바꿨습니다.", success=True)
 
 
 @router.patch("/faq/{faq_id}/toggle-active", response_model=MessageResponse)

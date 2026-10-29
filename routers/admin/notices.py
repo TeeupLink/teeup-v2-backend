@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import get_db
+from utils import audit
 from utils.datetime_utils import get_kst_now
 from utils.google_oauth import get_mime_type, load_access_token
 from .deps import get_admin_user
@@ -21,30 +22,87 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["admin-notices"])
 
 
+def _system_notices(db: Session):
+    """시스템 공지만 (클럽 공지는 club_id 가 있고 클럽 화면에서 관리한다)"""
+    from models import Notice
+    return db.query(Notice).filter(Notice.club_id.is_(None))
+
+
+def _get_or_404(db: Session, notice_id: int):
+    notice = _system_notices(db).filter_by(id=notice_id).first()
+    if not notice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공지사항을 찾을 수 없습니다")
+    return notice
+
+
+def _row(n, author_names: dict | None = None) -> dict:
+    return {
+        "id": n.id,
+        "title": n.title,
+        "type": n.type.value if hasattr(n.type, "value") else str(n.type),
+        "is_important": bool(n.is_important),
+        "is_published": bool(n.is_published),
+        "view_count": n.view_count or 0,
+        "author_id": n.author_id,
+        "author_name": (author_names or {}).get(n.author_id),
+        "published_at": n.published_at.isoformat() if n.published_at else None,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+        "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+    }
+
+
+def _validate(data: dict, partial: bool) -> None:
+    errors = []
+    for field, label, limit in (("title", "제목", 255), ("content", "내용", None)):
+        if partial and field not in data:
+            continue
+        value = str(data.get(field) or "").strip()
+        # 빈 단락만 있는 에디터 HTML 도 비어 있는 것으로 본다
+        if not value or value in ("<p></p>", "<p><br></p>"):
+            errors.append({"field": field, "message": f"{label}을(를) 입력해주세요"})
+        elif limit and len(value) > limit:
+            errors.append({"field": field, "message": f"{label}은(는) {limit}자 이하로 입력해주세요"})
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
+
+
+def _notify_published(db: Session, notice) -> None:
+    """게시될 때 한 번 활성 회원 전체에게 알린다. 임시 저장(미게시)에는 보내지 않는다"""
+    try:
+        from models import User, UserStatus
+        from utils.notification_service import create_notice_notification
+        for (user_id,) in db.query(User.id).filter(User.status == UserStatus.ACTIVE).all():
+            create_notice_notification(db=db, user_id=user_id, notice_title=notice.title, notice_id=notice.id)
+    except Exception as e:
+        logger.error(f"시스템 공지사항 알림 전송 실패: {str(e)}")
+
+
 @router.get("/notices")
 async def get_admin_notices(
+        page: int = Query(1, ge=1),
+        limit: int = Query(20, ge=1, le=100),
+        q: str | None = Query(None, description="제목·내용 검색"),
+        is_published: bool | None = Query(None),
+        is_important: bool | None = Query(None),
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 공지사항 목록 조회"""
-    try:
-        from models import Notice
-        from sqlalchemy import desc
+    """관리자용 시스템 공지 목록 (중요 공지 먼저, 최신순)"""
+    from models import Admin, Notice
+    from sqlalchemy import desc, or_
 
-        notices = db.query(Notice).order_by(desc(Notice.created_at)).limit(20).all()
-        notice_list = []
-        for n in notices:
-            notice_list.append({
-                "id": n.id,
-                "title": n.title,
-                "type": n.type.value,
-                "is_published": n.is_published,
-                "created_at": n.created_at.isoformat() if n.created_at else None,
-            })
-        return {"data": notice_list, "total": len(notice_list)}
-    except Exception as e:
-        logger.error(f"관리자 공지사항 목록 조회 중 오류: {str(e)}")
-        return {"data": [], "total": 0}
+    query = _system_notices(db)
+    if q:
+        query = query.filter(or_(Notice.title.contains(q), Notice.content.contains(q)))
+    if is_published is not None:
+        query = query.filter(Notice.is_published == is_published)
+    if is_important is not None:
+        query = query.filter(Notice.is_important == is_important)
+    total = query.count()
+    rows = query.order_by(desc(Notice.is_important), desc(Notice.created_at), desc(Notice.id)).offset((page - 1) * limit).limit(limit).all()
+    ids = {n.author_id for n in rows if n.author_id}
+    names = dict(db.query(Admin.id, Admin.name).filter(Admin.id.in_(ids)).all()) if ids else {}
+    return {"data": [_row(n, names) for n in rows], "total": total, "page": page, "limit": limit}
 
 
 @router.post("/notices/upload")
@@ -118,32 +176,15 @@ async def get_admin_notice(
     current_user: dict = Depends(get_admin_user),
 ):
     """관리자용 공지사항 상세 조회"""
-    try:
-        from models import Notice
-
-        notice = db.query(Notice).filter(Notice.id == notice_id).first()
-        if not notice:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공지사항을 찾을 수 없습니다")
-        notice_type = notice.type.value if hasattr(notice.type, "value") else str(notice.type)
-        return {
-            "id": notice.id,
-            "title": notice.title,
-            "content": notice.content,
-            "type": notice_type,
-            "is_important": getattr(notice, "is_important", False),
-            "is_published": getattr(notice, "is_published", False),
-            "view_count": getattr(notice, "view_count", 0),
-            "published_at": getattr(notice, "published_at", None),
-            "attachment_file": getattr(notice, "attachment_file", None),
-            "web_view_link": getattr(notice, "web_view_link", None),
-            "created_at": notice.created_at.isoformat() if notice.created_at else None,
-            "updated_at": notice.updated_at.isoformat() if notice.updated_at else None,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"관리자 공지사항 상세 조회 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="공지사항 조회 중 오류가 발생했습니다")
+    from models import Admin
+    notice = _get_or_404(db, notice_id)
+    author = db.query(Admin.name).filter(Admin.id == notice.author_id).scalar() if notice.author_id else None
+    return {
+        **_row(notice, {notice.author_id: author}),
+        "content": notice.content,
+        "attachment_file": notice.attachment_file,
+        "web_view_link": notice.web_view_link,
+    }
 
 
 @router.post("/notices")
@@ -152,50 +193,33 @@ async def create_admin_notice(
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 공지사항 생성"""
-    try:
-        from models import Notice
-        from models.enums import NoticeType
+    """관리자용 공지사항 생성. 게시로 저장하면 회원 알림을 보낸다"""
+    from models import Notice
+    from models.enums import NoticeType
 
-        for field in ["title", "content"]:
-            if field not in notice_data or not notice_data[field]:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field} 필드는 필수입니다")
-        is_published = bool(notice_data.get("is_published", False))
-        new_notice = Notice(
-            title=notice_data["title"],
-            content=notice_data["content"],
-            type=NoticeType.SYSTEM,
-            author_id=current_user["id"],
-            is_important=notice_data.get("is_important", False),
-            is_published=is_published,
-            published_at=get_kst_now() if is_published else None,
-        )
-        db.add(new_notice)
-        db.commit()
-        db.refresh(new_notice)
-        try:
-            from utils.notification_service import create_notice_notification
-            from models import User, UserStatus
-            for user in db.query(User).filter(User.status == UserStatus.ACTIVE).all():
-                create_notice_notification(db=db, user_id=user.id, notice_title=notice_data["title"])
-        except Exception as e:
-            logger.error(f"시스템 공지사항 알림 전송 실패: {str(e)}")
-        return {
-            "id": new_notice.id,
-            "title": new_notice.title,
-            "content": new_notice.content,
-            "is_important": new_notice.is_important,
-            "is_published": new_notice.is_published,
-            "published_at": new_notice.published_at.isoformat() if new_notice.published_at else None,
-            "created_at": new_notice.created_at.isoformat() if new_notice.created_at else None,
-            "updated_at": new_notice.updated_at.isoformat() if new_notice.updated_at else None,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"관리자 공지사항 생성 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"공지사항 생성 중 오류가 발생했습니다: {str(e)}")
+    _validate(notice_data, partial=False)
+    is_published = bool(notice_data.get("is_published", False))
+    notice = Notice(
+        title=str(notice_data["title"]).strip(),
+        content=notice_data["content"],
+        type=NoticeType.SYSTEM,
+        author_id=current_user["id"],
+        is_important=bool(notice_data.get("is_important", False)),
+        is_published=is_published,
+        published_at=get_kst_now() if is_published else None,
+        attachment_file=notice_data.get("attachment_file") or None,
+        web_view_link=notice_data.get("web_view_link") or None,
+    )
+    db.add(notice)
+    db.commit()
+    db.refresh(notice)
+    audit.record("CREATE", "NOTICE", notice.id, after={"title": notice.title, "is_published": is_published, "is_important": notice.is_important})
+    if is_published:
+        _notify_published(db, notice)
+    return {**_row(notice), "content": notice.content}
+
+
+_EDITABLE = ("title", "content", "is_important", "is_published", "attachment_file", "web_view_link")
 
 
 @router.put("/notices/{notice_id}")
@@ -205,68 +229,50 @@ async def update_admin_notice(
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 공지사항 수정"""
-    try:
-        from models import Notice
-
-        notice = db.query(Notice).filter(Notice.id == notice_id).first()
-        if not notice:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공지사항을 찾을 수 없습니다")
-        if "title" in notice_data:
-            notice.title = notice_data["title"]
-        if "content" in notice_data:
-            notice.content = notice_data["content"]
-        if "is_important" in notice_data:
-            notice.is_important = notice_data["is_important"]
-        if "is_published" in notice_data:
-            notice.is_published = bool(notice_data["is_published"])
-            if notice.is_published and not notice.published_at:
-                notice.published_at = get_kst_now()
-            elif not notice.is_published:
-                notice.published_at = None
-        notice.updated_at = get_kst_now()
-        db.commit()
-        db.refresh(notice)
-        return {
-            "id": notice.id,
-            "title": notice.title,
-            "content": notice.content,
-            "is_important": notice.is_important,
-            "is_published": notice.is_published,
-            "published_at": notice.published_at.isoformat() if notice.published_at else None,
-            "created_at": notice.created_at.isoformat() if notice.created_at else None,
-            "updated_at": notice.updated_at.isoformat() if notice.updated_at else None,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"관리자 공지사항 수정 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="공지사항 수정 중 오류가 발생했습니다")
+    """관리자용 공지사항 수정. 미게시 → 게시로 바뀌면 그때 회원 알림을 보낸다"""
+    notice = _get_or_404(db, notice_id)
+    _validate(notice_data, partial=True)
+    was_published = bool(notice.is_published)
+    before, after = {}, {}
+    for field in _EDITABLE:
+        if field not in notice_data:
+            continue
+        value = notice_data[field]
+        if field in ("is_important", "is_published"):
+            value = bool(value)
+        elif field == "title":
+            value = str(value).strip()
+        elif field in ("attachment_file", "web_view_link"):
+            value = value or None
+        old = getattr(notice, field)
+        if old != value:
+            # 본문은 길어서 감사 로그에는 바뀌었다는 사실만 남긴다
+            before[field] = "(본문)" if field == "content" else old
+            after[field] = "(본문 변경)" if field == "content" else value
+            setattr(notice, field, value)
+    if "is_published" in after:
+        notice.published_at = get_kst_now() if notice.is_published else None
+    notice.updated_at = get_kst_now()
+    db.commit()
+    db.refresh(notice)
+    if after:
+        audit.record("UPDATE", "NOTICE", notice.id, before=before, after=after)
+    if notice.is_published and not was_published:
+        _notify_published(db, notice)
+    return {**_row(notice), "content": notice.content}
 
 
 @router.delete("/notices/{notice_id}")
 async def delete_admin_notice(
         notice_id: int,
+        reason: str | None = Query(None, max_length=500),
         db: Session = Depends(get_db),
         current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 공지사항 삭제"""
-    try:
-        from models import Notice
-
-        notice = db.query(Notice).filter(Notice.id == notice_id).first()
-        if not notice:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="공지사항을 찾을 수 없습니다")
-        if hasattr(notice, "deleted_at"):
-            notice.deleted_at = get_kst_now()
-        else:
-            db.delete(notice)
-        db.commit()
-        return {"message": "공지사항이 성공적으로 삭제되었습니다", "success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        logger.error(f"관리자 공지사항 삭제 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="공지사항 삭제 중 오류가 발생했습니다")
+    """관리자용 공지사항 삭제 (영구 삭제 — 감사 로그에 제목과 게시 상태를 남긴다)"""
+    notice = _get_or_404(db, notice_id)
+    snapshot = {"title": notice.title, "is_published": bool(notice.is_published), "view_count": notice.view_count or 0}
+    db.delete(notice)
+    db.commit()
+    audit.record("DELETE", "NOTICE", notice_id, before=snapshot, reason=reason)
+    return {"message": "공지사항이 성공적으로 삭제되었습니다", "success": True}
