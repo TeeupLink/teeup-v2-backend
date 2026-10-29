@@ -13,6 +13,7 @@ from config import settings
 from database import get_db
 from models import Payment, User
 from schemas import PaymentStatus, PaymentMethod
+from utils.toss_payments import toss_auth_headers
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -95,13 +96,7 @@ async def confirm_payment(
         logger.info(f"결제 승인 요청: {request.paymentKey}, {request.orderId}, {request.amount}")
         
         # 토스페이먼츠 결제 승인 API 호출
-        import base64
-        encoded_key = base64.b64encode(f"{TOSS_SECRET_KEY}:".encode()).decode()
-        
-        headers = {
-            "Authorization": f"Basic {encoded_key}",
-            "Content-Type": "application/json"
-        }
+        headers = toss_auth_headers(TOSS_SECRET_KEY)
         
         data = {
             "paymentKey": request.paymentKey,
@@ -216,10 +211,7 @@ async def get_payment(
     try:
         logger.info(f"결제 정보 조회: {payment_key}")
         
-        headers = {
-            "Authorization": f"Basic {TOSS_SECRET_KEY}",
-            "Content-Type": "application/json"
-        }
+        headers = toss_auth_headers(TOSS_SECRET_KEY)
         
         response = requests.get(
             f"{TOSS_BASE_URL}/payments/{payment_key}",
@@ -310,10 +302,7 @@ async def cancel_payment(
     try:
         logger.info(f"결제 취소 요청: {payment_key}, 사유: {cancel_reason}")
         
-        headers = {
-            "Authorization": f"Basic {TOSS_SECRET_KEY}",
-            "Content-Type": "application/json"
-        }
+        headers = toss_auth_headers(TOSS_SECRET_KEY)
         
         data = {
             "cancelReason": cancel_reason
