@@ -38,6 +38,7 @@ from .audit import AdminAuditLog, AuditMonthlyReview
 
 # 회원 활동 로그 (backend #50)
 from .activity import UserActivityLog
+from .admin_notification import AdminNotification
 
 # 기타 모델
 from .notification import Notification
@@ -86,6 +87,7 @@ __all__ = [
     "AdminAuditLog",
     "AuditMonthlyReview",
     "UserActivityLog",
+    "AdminNotification",
     # Club
     "Club",
     "ClubMembership",

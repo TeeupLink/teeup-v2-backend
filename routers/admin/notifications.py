@@ -1,103 +1,78 @@
 """
-백오피스 알림 API
+백오피스 알림 API (헤더 알림 벨, backoffice F-016)
+
+관리자 알림은 admin_notifications(admins FK)에 있다. 예전 구현은 회원 알림(notifications, users FK)을
+관리자 id 로 조회·읽음 처리해서, 번호가 같은 회원의 알림을 보여 주고 그 회원의 읽음 상태를 바꿨다.
+응답 형태는 예전과 같다 (status: UNREAD/READ).
 """
-from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-import logging
 
 from database import get_db
-from .deps import get_admin_user
+from models import AdminNotification
+from utils.datetime_utils import get_kst_now
 
-logger = logging.getLogger(__name__)
+from .deps import get_admin_user
 
 router = APIRouter(tags=["admin-notifications"])
 
 
+def _row(n: AdminNotification) -> dict:
+    return {
+        "id": n.id,
+        "type": n.type,
+        "title": n.title,
+        "content": n.content,
+        "link": n.link,
+        "status": "READ" if n.read_at else "UNREAD",
+        "read_at": n.read_at.isoformat() if n.read_at else None,
+        "created_at": n.created_at.isoformat() if n.created_at else None,
+    }
+
+
 @router.get("/notifications")
 async def get_admin_notifications(
-    page: int = 1,
-    limit: int = 20,
-    status_filter: str | None = None,
-    type_filter: str | None = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status_filter: str | None = Query(None, pattern="^(UNREAD|READ)$"),
+    type_filter: str | None = Query(None, max_length=40),
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_admin_user),
 ):
-    """관리자용 알림 목록 조회"""
-    try:
-        from models import Notification, NotificationType, NotificationStatus
-        from sqlalchemy import desc
-
-        offset = (page - 1) * limit
-        query = db.query(Notification).filter(Notification.user_id == current_user.get("id"))
-        if status_filter:
-            status_val = NotificationStatus(status_filter).value if hasattr(NotificationStatus(status_filter), "value") else str(NotificationStatus(status_filter))
-            query = query.filter(Notification.status == status_val)
-        if type_filter:
-            type_val = NotificationType(type_filter).value if hasattr(NotificationType(type_filter), "value") else str(NotificationType(type_filter))
-            query = query.filter(Notification.type == type_val)
-        notifications = query.order_by(desc(Notification.created_at)).offset(offset).limit(limit).all()
-        notification_responses = []
-        for n in notifications:
-            notification_responses.append({
-                "id": n.id, "user_id": n.user_id,
-                "type": n.type.value if hasattr(n.type, "value") else str(n.type),
-                "title": n.title, "content": n.content,
-                "status": n.status.value if hasattr(n.status, "value") else str(n.status),
-                "read_at": n.read_at.isoformat() if n.read_at else None,
-                "created_at": n.created_at.isoformat() if n.created_at else None,
-            })
-        return notification_responses
-    except Exception as e:
-        logger.error(f"관리자 알림 목록 조회 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="알림 목록 조회 중 오류가 발생했습니다")
+    """내 알림 (최신순)"""
+    q = db.query(AdminNotification).filter(AdminNotification.admin_id == current_user["id"])
+    if status_filter == "UNREAD":
+        q = q.filter(AdminNotification.read_at.is_(None))
+    elif status_filter == "READ":
+        q = q.filter(AdminNotification.read_at.isnot(None))
+    if type_filter:
+        q = q.filter(AdminNotification.type == type_filter)
+    rows = q.order_by(AdminNotification.created_at.desc(), AdminNotification.id.desc()).offset((page - 1) * limit).limit(limit).all()
+    return [_row(n) for n in rows]
 
 
-@router.put("/notifications/{notification_id}/read")
-async def mark_admin_notification_as_read(
-    notification_id: int,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 알림 읽음 처리"""
-    try:
-        from models import Notification, NotificationStatus
-
-        notification = db.query(Notification).filter(
-            Notification.id == notification_id,
-            Notification.user_id == current_user.get("id"),
-        ).first()
-        if not notification:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="알림을 찾을 수 없습니다")
-        notification.status = NotificationStatus.READ.value
-        notification.read_at = datetime.now()
-        db.commit()
-        return {"message": "알림을 읽음으로 표시했습니다", "success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"관리자 알림 읽음 처리 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="알림 읽음 처리 중 오류가 발생했습니다")
+@router.get("/notifications/unread-count")
+async def get_admin_unread_count(db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    n = db.query(AdminNotification).filter(AdminNotification.admin_id == current_user["id"], AdminNotification.read_at.is_(None)).count()
+    return {"count": n}
 
 
 @router.put("/notifications/read-all")
-async def mark_all_admin_notifications_as_read(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 모든 알림 읽음 처리"""
-    try:
-        from models import Notification, NotificationStatus
+async def mark_all_admin_notifications_as_read(db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    unread = db.query(AdminNotification).filter(AdminNotification.admin_id == current_user["id"], AdminNotification.read_at.is_(None)).all()
+    now = get_kst_now().replace(tzinfo=None)
+    for n in unread:
+        n.read_at = now
+    db.commit()
+    return {"message": f"{len(unread)}개의 알림을 읽음으로 표시했습니다", "success": True}
 
-        unread = db.query(Notification).filter(
-            Notification.user_id == current_user.get("id"),
-            Notification.status == NotificationStatus.UNREAD.value,
-        ).all()
-        for n in unread:
-            n.status = NotificationStatus.READ.value
-            n.read_at = datetime.now()
+
+@router.put("/notifications/{notification_id}/read")
+async def mark_admin_notification_as_read(notification_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    n = db.query(AdminNotification).filter(AdminNotification.id == notification_id, AdminNotification.admin_id == current_user["id"]).first()
+    if not n:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="알림을 찾을 수 없습니다")
+    if not n.read_at:
+        n.read_at = get_kst_now().replace(tzinfo=None)
         db.commit()
-        return {"message": f"{len(unread)}개의 알림을 읽음으로 표시했습니다", "success": True}
-    except Exception as e:
-        logger.error(f"관리자 모든 알림 읽음 처리 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="알림 읽음 처리 중 오류가 발생했습니다")
+    return {"message": "알림을 읽음으로 표시했습니다", "success": True}
