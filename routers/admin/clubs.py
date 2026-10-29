@@ -29,7 +29,7 @@ def admin_list_clubs(page: int = Query(1, ge=1),
                      search: str | None = Query(None, max_length=100),
                      type: str | None = Query(None, pattern="^(REGULAR|IRREGULAR)$", description="클럽 유형"),
                      sido_code: str | None = Query(None, max_length=2, description="시도 코드"),
-                     include_deleted: bool = Query(False, description="삭제된 클럽 포함"),
+                     include_deleted: bool = Query(True, description="삭제된 클럽 포함 (기존 화면 호환 기본값. 새 백오피스는 false)"),
                      sort: str | None = Query(None, pattern="^-?(name|member_count|created_at)$", description="기본 -created_at"),
                      current_user: dict = Depends(get_admin_user),
                      db: Session = Depends(get_db)):
@@ -1325,16 +1325,23 @@ async def update_admin_club_member_role(club_id: str,
                                         role_data: dict,
                                         db: Session = Depends(get_db),
                                         current_user: dict = Depends(get_admin_user)):
-    """멤버 역할 변경 MEMBER ↔ MANAGER. 리더 지정·해제는 POST /clubs/{id}/leader 로만 (리더 2명 방지)"""
+    """멤버 역할 변경.
+
+    LEADER 로 지정하면 리더 교체(_swap_leader)와 같다 — 기존 리더는 MANAGER 가 되어 리더가 둘이 될 수 없다.
+    리더를 MEMBER/MANAGER 로 내리는 것은 기존 백오피스(먼저 강등 → 새 리더 지정)가 쓰므로 교체 배포(#33) 전까지 허용한다.
+    """
     club = _resolve_club(db, club_id)
     target = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.user_id == user_id).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 사용자가 클럽 멤버가 아닙니다")
     new_role = role_data.get("new_role") or role_data.get("role")
-    if new_role not in ("MEMBER", "MANAGER"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="역할은 MEMBER 또는 MANAGER 입니다. 리더는 리더 교체로 지정합니다")
-    if target.role == ClubRole.LEADER:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="리더의 역할은 리더 교체로만 바꿀 수 있습니다")
+    if new_role not in ("MEMBER", "MANAGER", "LEADER"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 역할입니다")
+    if new_role == "LEADER":
+        previous = _swap_leader(db, club, target)
+        audit.record("UPDATE", "CLUB", club.id, before={"leader_user_ids": previous}, after={"leader_user_ids": [user_id]},
+                     reason=role_data.get("reason"), meta={"action": "LEADER_CHANGE", "via": "role"})
+        return {"message": "멤버 역할이 LEADER로 변경되었습니다", "success": True}
     before = target.role.value if hasattr(target.role, "value") else str(target.role)
     target.role = ClubRole[new_role]
     target.updated_at = get_kst_now()
@@ -1378,24 +1385,31 @@ async def change_admin_club_leader(club_id: str, body: LeaderBody, db: Session =
     """리더 교체 (F-044). 한 트랜잭션: 기존 리더 → MANAGER, 대상 → LEADER"""
     club = _resolve_club(db, club_id)
     target = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.user_id == body.new_leader_id).first()
+    if target and target.role == ClubRole.LEADER:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 리더입니다")
+    previous = _swap_leader(db, club, target)
+    audit.record("UPDATE", "CLUB", club.id, before={"leader_user_ids": previous},
+                 after={"leader_user_ids": [body.new_leader_id]}, reason=body.reason, meta={"action": "LEADER_CHANGE"})
+    return {"success": True, "leader_id": body.new_leader_id, "previous_leader_ids": previous}
+
+
+def _swap_leader(db: Session, club: Club, target: ClubMembership | None) -> list[int]:
+    """한 트랜잭션: 기존 리더 → MANAGER, 대상 → LEADER. 대상은 활성 멤버만. 이전 리더 user_id 들을 돌려준다"""
     if not target or target.status not in (MembershipStatus.ACTIVE, "APPROVED"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="리더는 이 클럽의 활성 멤버만 될 수 있습니다")
-    if target.role == ClubRole.LEADER:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 리더입니다")
-    olds = db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.role == ClubRole.LEADER).all()
+    olds = [m for m in db.query(ClubMembership).filter(ClubMembership.club_id == club.id, ClubMembership.role == ClubRole.LEADER).all()
+            if m.id != target.id]
     now = get_kst_now()
     for m in olds:
         m.role = ClubRole.MANAGER
         m.updated_at = now
     target.role = ClubRole.LEADER
     target.updated_at = now
-    user = db.query(User).filter(User.id == body.new_leader_id).first()
+    user = db.query(User).filter(User.id == target.user_id).first()
     if user:
         club.representative_name = user.realname or user.nickname
     db.commit()
-    audit.record("UPDATE", "CLUB", club.id, before={"leader_user_ids": [m.user_id for m in olds]},
-                 after={"leader_user_ids": [body.new_leader_id]}, reason=body.reason, meta={"action": "LEADER_CHANGE"})
-    return {"success": True, "leader_id": body.new_leader_id, "previous_leader_ids": [m.user_id for m in olds]}
+    return [m.user_id for m in olds]
 
 @router.put("/clubs/{club_id}")
 async def update_admin_club(club_id: str,

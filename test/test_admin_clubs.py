@@ -95,27 +95,32 @@ def test_list_counts_filters_sort(env):
     db.commit()
     client = as_role("CLUB_ADMIN")
 
-    rows = client.get(f"{A}/clubs").json()["data"]
+    live = {"include_deleted": False}
+    rows = client.get(f"{A}/clubs", params=live).json()["data"]
     assert [r["name"] for r in rows] == ["강남", "부산"]
     g = rows[0]
     assert g["member_count"] == 3 and g["pending_count"] == 2 and g["leader_nickname"] == "강남0"
-    assert [r["name"] for r in client.get(f"{A}/clubs", params={"sido_code": "26"}).json()["data"]] == ["부산"]
-    assert [r["name"] for r in client.get(f"{A}/clubs", params={"type": "IRREGULAR"}).json()["data"]] == ["부산"]
-    assert [r["name"] for r in client.get(f"{A}/clubs", params={"sort": "member_count"}).json()["data"]] == ["부산", "강남"]
-    assert len(client.get(f"{A}/clubs", params={"include_deleted": True}).json()["data"]) == 3
+    assert [r["name"] for r in client.get(f"{A}/clubs", params={**live, "sido_code": "26"}).json()["data"]] == ["부산"]
+    assert [r["name"] for r in client.get(f"{A}/clubs", params={**live, "type": "IRREGULAR"}).json()["data"]] == ["부산"]
+    assert [r["name"] for r in client.get(f"{A}/clubs", params={**live, "sort": "member_count"}).json()["data"]] == ["부산", "강남"]
+    assert len(client.get(f"{A}/clubs").json()["data"]) == 3  # 기본값은 기존 화면 호환 (삭제 포함)
     assert client.get(f"{A}/clubs", params={"sort": "description"}).status_code == 422
 
 
-def test_role_change_cannot_make_or_unmake_leader(env):
+def test_role_change_to_leader_is_swap_never_two_leaders(env):
     db, as_role = env
     c, (leader, member) = club_with(db, "강남")
     client = as_role("CLUB_ADMIN")
-    assert client.put(f"{A}/clubs/{c.id}/members/{member.id}/role", json={"new_role": "LEADER"}).status_code == 400
-    assert client.put(f"{A}/clubs/{c.id}/members/{leader.id}/role", json={"new_role": "MEMBER"}).status_code == 400
     r = client.put(f"{A}/clubs/{c.id}/members/{member.id}/role", json={"new_role": "MANAGER", "reason": "총무"})
     assert r.status_code == 200
     (row,) = audits(db, target_type="CLUB_MEMBERSHIP", action="UPDATE")
     assert row.before_json == {"role": "MEMBER"} and row.after_json == {"role": "MANAGER"} and row.reason == "총무"
+
+    # 기존 백오피스 방식: 역할 API 로 LEADER 지정 → 기존 리더는 자동으로 MANAGER
+    assert client.put(f"{A}/clubs/{c.id}/members/{member.id}/role", json={"new_role": "LEADER"}).status_code == 200
+    db.expire_all()
+    roles = {m.user_id: m.role for m in db.query(ClubMembership).filter_by(club_id=c.id).all()}
+    assert roles == {leader.id: ClubRole.MANAGER, member.id: ClubRole.LEADER}
 
 
 def test_leader_change_is_atomic_swap(env):
