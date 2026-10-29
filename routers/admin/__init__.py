@@ -28,6 +28,7 @@ from .clubs import router as clubs_router
 from .meetings import router as meetings_router
 from .rounds import router as rounds_router
 from .faq import router as faq_router
+from .reports import router as reports_router
 from .join_requests import router as join_requests_router
 from .lookup import router as lookup_router
 from .audit_logs import router as audit_logs_router
@@ -56,6 +57,7 @@ router.include_router(notices_router, dependencies=[Depends(require_resource("co
 router.include_router(faq_router, dependencies=[Depends(require_resource("content"))])
 router.include_router(terms_router, dependencies=[Depends(require_resource("content"))])
 router.include_router(inquiries_router, dependencies=[Depends(require_resource("inquiries"))])
+router.include_router(reports_router, dependencies=[Depends(require_resource("reports"))])
 router.include_router(payments_router, dependencies=[Depends(require_resource("payments"))])
 router.include_router(audit_logs_router, dependencies=[Depends(require_resource("auditLogs"))])
 
