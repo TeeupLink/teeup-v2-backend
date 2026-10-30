@@ -3,12 +3,13 @@
 """
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 import logging
 
 from database import get_db
-from models import User, Club, ClubMembership, UserActivityLog
+from models import User, Club, ClubMembership, Terms, TermsAgreement, UserActivityLog
 from models import UserStatus
 from schemas import UserResponse, PaginatedResponse, MembershipStatus
 import schemas
@@ -276,6 +277,7 @@ async def get_user_clubs(
             "location": club.location,
             "status": club.status.value if hasattr(club.status, "value") else str(club.status),
             "member_role": membership.role.value if hasattr(membership.role, "value") else str(membership.role),
+            "note": membership.note,
             "joined_at": membership.created_at.isoformat() if membership.created_at else None,
             "club_created_at": club.created_at.isoformat() if club.created_at else None,
         } for membership, club in memberships]
@@ -288,6 +290,68 @@ async def get_user_clubs(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="사용자 클럽 목록 조회 중 오류가 발생했습니다",
         )
+
+
+class MemberNoteBody(BaseModel):
+    note: str | None = Field(None, max_length=2000)
+
+
+@router.put("/users/{user_id}/clubs/{club_id}/note")
+async def update_member_note(
+        user_id: int,
+        club_id: int,
+        body: MemberNoteBody,
+        db: Session = Depends(get_db),
+        current_user: dict = Depends(get_admin_user),
+):
+    """클럽별 회원 메모 (F-034). 앱의 구성원 메모(club_memberships.note)와 같은 칸이라 클럽 리더·매니저도 앱에서 본다"""
+    m = db.query(ClubMembership).filter(ClubMembership.user_id == user_id, ClubMembership.club_id == club_id).first()
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="이 클럽의 회원이 아닙니다")
+    note = (body.note or "").strip() or None
+    before = m.note
+    if note == before:
+        return {"club_id": club_id, "user_id": user_id, "note": note}
+    m.note = note
+    db.commit()
+    audit.record("UPDATE", "CLUB_MEMBER", m.id, before={"note": before}, after={"note": note},
+                 meta={"club_id": club_id, "user_id": user_id})
+    return {"club_id": club_id, "user_id": user_id, "note": note}
+
+
+@router.get("/users/{user_id}/terms-agreements")
+async def get_user_terms_agreements(
+        user_id: int,
+        db: Session = Depends(get_db),
+        current_user: dict = Depends(get_admin_user),
+):
+    """회원별 약관 동의 이력 (F-111). 최근 동의 먼저 + 게시중 필수 약관 중 아직 동의하지 않은 것"""
+    from .terms import _rows
+
+    if not db.query(User.id).filter(User.id == user_id).first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다")
+    agreements = (db.query(TermsAgreement).filter(TermsAgreement.user_id == user_id)
+                  .order_by(TermsAgreement.agreed_at.desc(), TermsAgreement.id.desc()).all())
+    versions = {r["id"]: r for r in _rows(db, db.query(Terms).filter(Terms.id.in_({a.terms_id for a in agreements})).all())} \
+        if agreements else {}
+    items = []
+    for a in agreements:
+        v = versions.get(a.terms_id, {})
+        items.append({
+            "id": a.id,
+            "terms_id": a.terms_id,
+            "type": v.get("type"),
+            "version": v.get("version"),
+            "title": v.get("title"),
+            "status": v.get("status"),
+            "is_required": v.get("is_required"),
+            "agreed_at": a.agreed_at.isoformat() if a.agreed_at else None,
+            "ip_address": a.ip_address,
+        })
+    agreed_ids = {a.terms_id for a in agreements}
+    active_required = db.query(Terms).filter(Terms.is_active.is_(True), Terms.is_required.is_(True)).all()
+    missing = _rows(db, [t for t in active_required if t.id not in agreed_ids])
+    return {"items": items, "missing_required": [{k: r[k] for k in ("id", "type", "version", "title")} for r in missing]}
 
 
 @router.get("/users/{user_id}/meetings", response_model=schemas.UserMeetingsResponse)
