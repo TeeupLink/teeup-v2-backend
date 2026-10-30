@@ -35,6 +35,7 @@ class Payment(Base):
     status = Column(String(50), default="PENDING")
     method = Column(String(50))
     customer_key = Column(String(255))
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), index=True, comment="회원별 결제 조회 (backend #51)")
     customer_name = Column(String(255))
     customer_email = Column(String(255))
     requested_at = Column(DateTime)
@@ -68,6 +69,9 @@ class Subscription(Base):
     start_date = Column(DateTime, nullable=False)
     next_billing_date = Column(DateTime)
     end_date = Column(DateTime)
+    billing_key_id = Column(Integer, ForeignKey("billing_keys.id"), comment="결제 수단 (backend #51)")
+    canceled_at = Column(DateTime)
+    cancel_reason = Column(String(200))
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     

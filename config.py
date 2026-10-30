@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     TOSS_PAYMENTS_CLIENT_KEY: str = ""
     TOSS_PAYMENTS_SECRET_KEY: str = ""
     TOSS_PAYMENTS_BASE_URL: str = "https://api.tosspayments.com/v1"
+    # 정기결제 (backend #51). false 면 자동 청구·수동 재청구가 동작하지 않는다
+    BILLING_ENABLED: bool = False
+    # 빌링키 암호화 키 (임의의 긴 문자열). 없으면 빌링키를 발급·사용할 수 없다
+    BILLING_KEY_ENC_KEY: str = ""
 
     # Google OAuth Configuration
     GOOGLE_WEB_CLIENT_ID: str = ""

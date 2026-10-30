@@ -42,6 +42,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
             "/api/v1/auth/logout",
             "/api/v1/auth/oauth/google/callback",
             "/api/v1/admin/login",
+            "/api/v1/payments/webhook",  # 토스 서버가 부른다. 본문은 토스 조회로 재확인 (backend #51)
             "/api/v1/auth/csrf-token"  # CSRF 토큰 요청은 제외
         }
         # CSRF 토큰 저장소 (실제로는 Redis나 세션에 저장)
