@@ -147,3 +147,30 @@ def test_blocks_list_and_unblock_with_reason(env):
     assert db.query(UserBlock).count() == 0
     row = audits(db, action="DELETE", target_type="USER_BLOCK")[0]
     assert row.before_json["blocker_id"] == u1.id and row.reason == "차단한 회원이 해제 요청"
+
+
+def test_app_report_does_not_create_inquiry(env):
+    """신고는 신고 화면에서만 처리한다. 예전처럼 [신고] 1:1 문의가 함께 생기지 않는다."""
+    from models import AdminNotification, Inquiry
+    from routers.auth import get_current_user
+    from routers.moderation import router as moderation_router
+
+    db, (u1, u2, *_), _ = env
+    app = FastAPI()
+    app.include_router(moderation_router, prefix="/api/v1")
+
+    def _db():
+        s = sessionmaker(bind=db.get_bind())()
+        try:
+            yield s
+        finally:
+            s.close()
+
+    app.dependency_overrides[get_db] = _db
+    app.dependency_overrides[get_current_user] = lambda: u1
+    r = TestClient(app).post("/api/v1/moderation/reports", json={"target_type": "USER", "target_id": u2.id, "reason": "SPAM"})
+    assert r.status_code == 201, r.text
+    db.expire_all()
+    assert db.query(ContentReport).count() == 5
+    assert db.query(Inquiry).count() == 0
+    assert db.query(AdminNotification).count() == 0  # 권한 있는 관리자가 없어 알림 대상도 없음

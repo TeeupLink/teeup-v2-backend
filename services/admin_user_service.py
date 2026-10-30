@@ -6,7 +6,6 @@
 - 중복·형식 오류는 필드 단위로 돌려준다: detail=[{field, message}] (409·422)
 - 감사 로그용 전·후 스냅샷을 돌려준다 (호출부에서 audit.record)
 """
-import hashlib
 import re
 from datetime import datetime
 from decimal import Decimal
@@ -18,6 +17,7 @@ from sqlalchemy.orm import Session
 from models import Gender, HandicapUpdateMethod, Provider, User, UserStatus
 from utils.datetime_utils import get_kst_now
 from utils.handicap_calculator import calculate_handicap_from_average_score
+from utils.passwords import hash_password
 
 # 감사 스냅샷·수정 대상 항목 (비밀번호는 넣지 않는다)
 FIELDS = ("email", "realname", "nickname", "phone_number", "birthdate", "gender", "average_score_init", "handicap_init", "status")
@@ -137,7 +137,7 @@ def create_user(db: Session, body: AdminUserCreate) -> User:
     data.setdefault("status", UserStatus.ACTIVE)
     _check_unique(db, data, None)
     user = User(
-        password=hashlib.sha256(body.password.encode()).hexdigest(),
+        password=hash_password(body.password),
         provider=Provider.LOCAL,
         needs_terms_agreement=True,
     )

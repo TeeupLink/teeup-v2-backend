@@ -6,8 +6,7 @@ from typing import Optional, Literal
 from datetime import datetime, timedelta, timezone
 from utils import activity
 from utils.datetime_utils import get_kst_now, get_kst_date
-from utils.passwords import verify_password
-import hashlib
+from utils.passwords import hash_password, needs_rehash, verify_password
 import re
 import logging
 
@@ -434,6 +433,18 @@ def _build_login_token_payload(
     return payload
 
 
+def _upgrade_user_hash(db: Session, user: User, password: str) -> None:
+    """로그인에 성공한 예전 형식(SHA-256) 회원 비밀번호를 PBKDF2 로 바꿔 저장한다. 실패해도 로그인은 막지 않는다"""
+    if not needs_rehash(user.password):
+        return
+    try:
+        user.password = hash_password(password)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"회원 비밀번호 해시 전환 실패 (user={user.id}): {e}")
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(
     request: Request,
@@ -449,7 +460,6 @@ async def login(
     if not email or not password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이메일과 비밀번호를 입력해주세요.")
 
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
     refresh_expire_delta = get_refresh_expire_delta(client_type)
 
     # 1) Admin 우선 로그인 (관리자는 PBKDF2, 예전 SHA-256 은 성공 시 전환)
@@ -484,13 +494,14 @@ async def login(
 
     # 2) User 로그인
     user = db.query(User).filter(User.email == email, User.deleted_at.is_(None)).first()
-    if not user or user.password != password_hash:
+    if not user or not verify_password(password, user.password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="이메일 또는 비밀번호가 올바르지 않습니다.")
 
     if user.status == UserStatus.DELETED:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="탈퇴한 사용자입니다.")
     if user.status == UserStatus.DEACTIVATED:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자에 의해 비활성화 처리된 회원입니다.")
+    _upgrade_user_hash(db, user, password)
 
     token_payload = _build_login_token_payload(
         user_id=user.id,
