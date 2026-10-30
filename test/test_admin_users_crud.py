@@ -3,7 +3,6 @@
 SQLite 메모리 DB. 활동 로그는 별도 세션이라 utils.activity.session_factory 를 같은 DB 로 바꾼다.
 """
 
-import hashlib
 import os
 
 import pytest
@@ -23,6 +22,7 @@ from models import AdminAuditLog, User, UserActivityLog, UserStatus  # noqa: E40
 from routers import admin as admin_pkg  # noqa: E402
 from routers.admin.deps import get_admin_user  # noqa: E402
 from utils import activity  # noqa: E402
+from utils.passwords import verify_password  # noqa: E402
 from utils.activity import ActivityContextMiddleware  # noqa: E402
 from utils.audit import AuditMiddleware  # noqa: E402
 from utils.datetime_utils import get_kst_now  # noqa: E402
@@ -75,7 +75,7 @@ def test_create_user_hashes_password_and_audits_without_it(env):
     assert body["birthdate"] == "1990-05-01" and body["provider"] == "LOCAL"
 
     user = db.get(User, body["id"])
-    assert user.password == hashlib.sha256(b"golf123!").hexdigest()
+    assert user.password.startswith("pbkdf2_sha256$") and verify_password("golf123!", user.password)
     (row,) = audits(db, action="CREATE")
     assert row.target_id == str(user.id) and row.reason == "오프라인 가입"
     assert "password" not in row.after_json and row.after_json["email"] == "new@teeup.run"

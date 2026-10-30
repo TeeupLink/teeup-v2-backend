@@ -13,7 +13,7 @@ from schemas import UserCreate, UserUpdate, UserResponse
 def create_user_impl(user_data: UserCreate, db: Session) -> User:
     """사용자 생성 (관리자 전용 로직)"""
     import re
-    import hashlib
+    from utils.passwords import hash_password
     from routers.auth import validate_nickname, validate_birthdate
 
     # 유효성 검사
@@ -47,7 +47,7 @@ def create_user_impl(user_data: UserCreate, db: Session) -> User:
     if db.query(User).filter(User.nickname == user_data.nickname).first():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 존재하는 닉네임입니다")
 
-    password_hash = hashlib.sha256(user_data.password.encode()).hexdigest()
+    password_hash = hash_password(user_data.password)
     birthdate_datetime = None
     if user_data.birthdate:
         birthdate_validation = validate_birthdate(user_data.birthdate)
