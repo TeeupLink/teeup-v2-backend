@@ -209,9 +209,3 @@ async def get_dashboard_activities(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="최근 활동 조회 중 오류가 발생했습니다",
         )
-
-
-@router.get("/debug/sessions")
-async def get_session_debug_info(current_user: dict = Depends(get_admin_user)):
-    """세션 디버깅 정보 조회"""
-    return {"message": "세션 관리 없음", "debug_info": {"session_count": 0, "session_ids": []}, "current_user": current_user}
