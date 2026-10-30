@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import (User, Club, ClubNotice, Regulation, Meeting, Inquiry,
+from models import (User, Club, ClubNotice, Regulation, Meeting,
                     ContentReport, UserBlock)
-from models.enums import InquiryType, ReportTargetType
+from models.enums import ReportTargetType
 from schemas import MessageResponse
 from schemas.moderation import (ContentReportCreate, ContentReportResponse,
                                 BlockedUsersResponse, BlockedUserItem)
@@ -51,8 +51,9 @@ async def create_report(payload: ContentReportCreate,
                         db: Session = Depends(get_db)):
     """콘텐츠·사용자 신고 등록.
 
-    신고 내역은 content_reports 에 저장하고, 운영자가 기존 백오피스 문의 목록에서
-    바로 볼 수 있도록 [신고] 제목의 문의도 함께 생성한다.
+    신고 내역은 content_reports 에 저장하고 관리자 알림(헤더 벨)을 보낸다.
+    운영자는 백오피스 신고 화면에서 처리한다. 예전에는 [신고] 제목의 1:1 문의도
+    함께 만들었지만, 신고 화면이 생긴 뒤로 같은 건이 두 곳에 보여 없앴다.
     """
     model = _TARGET_MODEL[payload.target_type]
     if not db.query(model).filter(model.id == payload.target_id).first():
@@ -73,17 +74,6 @@ async def create_report(payload: ContentReportCreate,
 
         label = _TARGET_LABEL[payload.target_type]
         reason_label = _REASON_LABEL.get(payload.reason.value, payload.reason.value)
-        body = (f"신고 대상: {label} #{payload.target_id}\n"
-                f"신고 사유: {reason_label}\n"
-                f"신고자: user #{current_user.id}\n\n"
-                f"{payload.description or '(상세 설명 없음)'}")
-        db.add(Inquiry(
-            user_id=current_user.id,
-            title=f"[신고] {label} #{payload.target_id} — {reason_label}",
-            content=body,
-            type=InquiryType.GENERAL,
-        ))
-
         db.commit()
         db.refresh(report)
         activity.log(current_user, "REPORT", f"{label} 신고 ({reason_label})", target_type="REPORT", target_id=report.id)
