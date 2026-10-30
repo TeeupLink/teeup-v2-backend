@@ -18,12 +18,13 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Admin, Terms, TermsAgreement
+from models import Admin, Terms, TermsAgreement, User
 from schemas import TermsType
 from utils import audit
 from utils.datetime_utils import get_kst_now
 
 from .deps import get_admin_user
+from .pagination import PageParams, apply_sort, paginate
 
 router = APIRouter(tags=["admin-terms"])
 
@@ -146,6 +147,30 @@ async def list_versions(type: str | None = Query(None, description="SERVICE·PRI
 @router.get("/terms/versions/{term_id}")
 async def get_version(term_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
     return _rows(db, [_get(db, term_id)], content=True)[0]
+
+
+@router.get("/terms/versions/{term_id}/agreements")
+async def list_version_agreements(term_id: int, params: PageParams = Depends(), db: Session = Depends(get_db),
+                                  current_user: dict = Depends(get_admin_user)):
+    """버전별 동의 이력 (F-111). q 는 닉네임·회원 번호"""
+    _get(db, term_id)
+    q = (db.query(TermsAgreement, User).join(User, User.id == TermsAgreement.user_id)
+         .filter(TermsAgreement.terms_id == term_id))
+    if params.q:
+        cond = User.nickname.contains(params.q)
+        if params.q.isdigit():
+            cond = cond | (User.id == int(params.q))
+        q = q.filter(cond)
+    q = apply_sort(q, params.sort, {"agreed_at": TermsAgreement.agreed_at, "nickname": User.nickname},
+                   (TermsAgreement.agreed_at.desc(), TermsAgreement.id.desc()))
+    return paginate(q, params, lambda row: {
+        "id": row[0].id,
+        "user_id": row[1].id,
+        "nickname": row[1].nickname,
+        "user_status": row[1].status.value if row[1].status else None,
+        "agreed_at": row[0].agreed_at.isoformat() if row[0].agreed_at else None,
+        "ip_address": row[0].ip_address,
+    })
 
 
 class VersionCreate(BaseModel):
