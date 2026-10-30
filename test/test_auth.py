@@ -12,6 +12,9 @@ import pytest
 # API 기본 URL
 BASE_URL = "http://localhost:8002/api/v1"
 
+# 서버 없이 in-process 로 돈다. 실서버 대상은 TEEUP_LIVE_API_URL (conftest 의 legacy_api 참고)
+pytestmark = pytest.mark.usefixtures("legacy_api")
+
 class TestAuth:
     """인증 테스트 클래스"""
     
@@ -84,13 +87,16 @@ class TestAuth:
         assert response.status_code == 200
         data = response.json()
         assert data["email"] == "leader1@teeup.run"
-        assert data["role"] == "USER"
+        # /auth/me 응답은 role 대신 type("user"/"admin") 을 준다
+        assert data["type"] == "user"
+        assert "id" in data
     
     def test_get_current_user_without_token(self):
         """토큰 없이 현재 사용자 정보 조회 실패"""
         response = requests.get(f"{BASE_URL}/auth/me")
         
-        assert response.status_code == 403  # 403 Forbidden
+        # HTTPBearer(auto_error=False) + 인증 의존성의 401 로 바뀌어 403 이 아니라 401
+        assert response.status_code == 401
     
     def test_get_current_user_with_invalid_token(self):
         """잘못된 토큰으로 현재 사용자 정보 조회 실패"""
