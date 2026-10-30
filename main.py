@@ -36,7 +36,7 @@ import logging
 
 from config import settings
 from database import get_db, init_database, test_connection
-from routers import (auth, plans, payments, payment_methods, region, subscriptions, users, terms, notices, inquiries,
+from routers import (auth, plans, payments, payment_webhook, payment_methods, region, subscriptions, users, terms, notices, inquiries,
                      upload, admin, oauth, faq, moderation)
 from routers.internal import loadtest_router
 from routers.clubs import (
@@ -212,6 +212,7 @@ app.include_router(rounds_router, prefix="/api/v1")  # /rounds - 라운딩 전�
 app.include_router(socials_router, prefix="/api/v1")  # /socials - 소셜 모임 전용
 app.include_router(plans.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1/payments")
+app.include_router(payment_webhook.router, prefix="/api/v1/payments")  # POST /payments/webhook - 토스 웹훅 (backend #51)
 app.include_router(payment_methods.router, prefix="/api/v1")
 app.include_router(subscriptions.router, prefix="/api/v1")
 app.include_router(terms.router, prefix="/api/v1")
