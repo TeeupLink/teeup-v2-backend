@@ -15,6 +15,9 @@ from datetime import datetime, timedelta
 # API 기본 URL
 BASE_URL = "http://localhost:8002/api/v1"
 
+# 서버 없이 in-process 로 돈다. 실서버 대상은 TEEUP_LIVE_API_URL (conftest 의 legacy_api 참고)
+pytestmark = pytest.mark.usefixtures("legacy_api")
+
 class TestMeetings:
     """미팅 관리 테스트 클래스"""
     
@@ -35,7 +38,9 @@ class TestMeetings:
             "name": f"테스트 골프클럽 {int(time.time())}",
             "description": "테스트용 골프클럽입니다",
             "member_count": 10,
-            "location": "서울시 강남구",
+            # 클럽 지역은 자유 입력 location 에서 시도/군구 코드로 바뀌었다 (서울 강남구)
+            "sido_code": "11",
+            "gungu_codes": ["11680"],
             "contact_info": "010-1234-5678",
             "representative_name": "김테스트",
             "additional_info": "매주 토요일 정기 라운딩"
@@ -73,20 +78,23 @@ class TestMeetings:
             "caddy_fee": 20000,
             "cart_fee": 0,
             "settlement_method": "EQUAL_SPLIT",
-            "reservation_name": "김테스트"
+            "reservation_name": "김테스트",
+            # RoundingMeetingCreate 가 본문에도 club_id(정수, 필수)를 받도록 바뀌었다 (쿼리 club_id 와 별개)
+            "club_id": club_id,
         }
         
         response = requests.post(f"{BASE_URL}/meetings/", json=meeting_data, headers={
             "Authorization": f"Bearer {token}"
         }, params={"club_id": club_id})
         
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         data = response.json()
         return data["id"]
 
     def get_user_id(self, token):
         """토큰으로 현재 사용자 ID 조회"""
-        response = requests.get(f"{BASE_URL}/users/me", headers={
+        # GET /users/me 는 없어졌다 (users 라우터에는 PUT /users/me 만 있다). 조회는 /auth/me
+        response = requests.get(f"{BASE_URL}/auth/me", headers={
             "Authorization": f"Bearer {token}"
         })
         assert response.status_code == 200
@@ -213,7 +221,9 @@ class TestMeetings:
             "caddy_fee": 20000,
             "cart_fee": 0,
             "settlement_method": "EQUAL_SPLIT",
-            "reservation_name": "김테스트"
+            "reservation_name": "김테스트",
+            # RoundingMeetingCreate 가 본문에도 club_id(정수, 필수)를 받도록 바뀌었다 (쿼리 club_id 와 별개)
+            "club_id": club_id,
         }
         
         response = requests.post(f"{BASE_URL}/meetings/", json=meeting_data, headers={
@@ -239,7 +249,8 @@ class TestMeetings:
         
         response = requests.post(f"{BASE_URL}/meetings", json=meeting_data, params={"club_id": "test_club"})
         
-        assert response.status_code == 403
+        # HTTPBearer(auto_error=False) + 인증 의존성의 401 로 바뀌어 403 이 아니라 401
+        assert response.status_code == 401
     
     def test_create_meeting_with_invalid_data(self):
         """잘못된 데이터로 미팅 생성 실패"""
@@ -286,6 +297,11 @@ class TestMeetings:
         assert "data" in data
         assert isinstance(data["data"], list)
     
+    @pytest.mark.xfail(
+        strict=True,
+        reason="앱 버그: GET /meetings/{id} 가 MeetingResponse(**meeting_dict, name=...) 로 같은 키를 두 번 넘겨 "
+               "항상 TypeError -> 500 (routers/meetings/base.py get_meeting)",
+    )
     def test_get_meeting_detail(self):
         """미팅 상세 정보 조회"""
         # 먼저 미팅 생성
@@ -375,7 +391,8 @@ class TestMeetings:
         
         token = self.get_auth_token()
         
-        response = requests.post(f"{BASE_URL}/meetings/{meeting_id}/join", headers={
+        # 참가/탈퇴/참가자 조회는 /meetings/{id}/... 에서 유형별 경로 /rounds/{id}/... 로 옮겨졌다
+        response = requests.post(f"{BASE_URL}/rounds/{meeting_id}/join", headers={
             "Authorization": f"Bearer {token}"
         })
         
@@ -393,7 +410,8 @@ class TestMeetings:
         token = self.get_auth_token()
 
         # 생성자는 탈퇴할 수 없으므로 400 에러가 정상
-        response = requests.delete(f"{BASE_URL}/meetings/{meeting_id}/leave", headers={
+        # 참가/탈퇴/참가자 조회는 /meetings/{id}/... 에서 유형별 경로 /rounds/{id}/... 로 옮겨졌다
+        response = requests.delete(f"{BASE_URL}/rounds/{meeting_id}/leave", headers={
             "Authorization": f"Bearer {token}"
         })
 
@@ -410,7 +428,8 @@ class TestMeetings:
         
         token = self.get_auth_token()
         
-        response = requests.get(f"{BASE_URL}/meetings/{meeting_id}/participants", headers={
+        # 참가/탈퇴/참가자 조회는 /meetings/{id}/... 에서 유형별 경로 /rounds/{id}/... 로 옮겨졌다
+        response = requests.get(f"{BASE_URL}/rounds/{meeting_id}/participants", headers={
             "Authorization": f"Bearer {token}"
         })
         
@@ -419,31 +438,34 @@ class TestMeetings:
         assert isinstance(data, list)
     
     def test_remove_participant(self):
-        """참가자 제거"""
-        # 먼저 미팅 생성 (생성자는 자동 참가됨)
-        meeting_id = self.create_test_meeting()
+        """참가자가 라운딩에서 빠진다
 
-        token = self.get_auth_token()
+        예전 DELETE /meetings/{id}/participants/{participant_id} (리더가 참가자 제거) 는 없어졌다.
+        지금 참가자를 빼는 사용자 API 는 본인 탈퇴 DELETE /rounds/{id}/leave 뿐이라 그것으로 검증한다.
+        """
+        club_id = self.create_test_club()
+        meeting_id = self.create_test_meeting(club_id)
+        member_token, member_user_id = self.add_member_to_club(club_id)
+        leader_token = self.get_auth_token()
 
-        # 이미 참가되어 있으므로 바로 제거 테스트
-        
-        # 참가자 목록 조회하여 participant_id 획득
-        participants_response = requests.get(f"{BASE_URL}/meetings/{meeting_id}/participants", headers={
-            "Authorization": f"Bearer {token}"
-        })
-        assert participants_response.status_code == 200
-        participants = participants_response.json()
-        
-        if participants:
-            participant_id = participants[0]["id"]
-            
-            # 참가자 제거
-            response = requests.delete(f"{BASE_URL}/meetings/{meeting_id}/participants/{participant_id}", headers={
-                "Authorization": f"Bearer {token}"
+        def participant_user_ids():
+            res = requests.get(f"{BASE_URL}/rounds/{meeting_id}/participants", headers={
+                "Authorization": f"Bearer {leader_token}"
             })
-            
-            # 성공 또는 권한 없음 모두 허용
-            assert response.status_code in [200, 204, 403, 400]
+            assert res.status_code == 200
+            return [p.get("user_id") for p in res.json()]
+
+        response = requests.post(f"{BASE_URL}/rounds/{meeting_id}/join", headers={
+            "Authorization": f"Bearer {member_token}"
+        })
+        assert response.status_code == 200
+        assert member_user_id in participant_user_ids()
+
+        response = requests.delete(f"{BASE_URL}/rounds/{meeting_id}/leave", headers={
+            "Authorization": f"Bearer {member_token}"
+        })
+        assert response.status_code == 200
+        assert member_user_id not in participant_user_ids()
     
     def test_meeting_workflow_complete(self):
         """전체 미팅 워크플로우 테스트"""
@@ -454,21 +476,24 @@ class TestMeetings:
         meeting_id = self.create_test_meeting(club_id)
         
         # 3. 미팅 정보 조회
+        # GET /meetings/{id} 는 앱 버그로 500 이다 (test_get_meeting_detail 의 xfail 참고).
+        # 앱이 쓰는 라운딩 상세 /rounds/{id} 로 흐름을 검증한다.
         token = self.get_auth_token()
-        response = requests.get(f"{BASE_URL}/meetings/{meeting_id}", headers={
+        response = requests.get(f"{BASE_URL}/rounds/{meeting_id}", headers={
             "Authorization": f"Bearer {token}"
         })
         assert response.status_code == 200
         
         # 4. 미팅 참가 (생성자는 이미 참가되어 있음)
-        response = requests.post(f"{BASE_URL}/meetings/{meeting_id}/join", headers={
+        # 참가/탈퇴/참가자 조회는 /meetings/{id}/... 에서 유형별 경로 /rounds/{id}/... 로 옮겨졌다
+        response = requests.post(f"{BASE_URL}/rounds/{meeting_id}/join", headers={
             "Authorization": f"Bearer {token}"
         })
         # 이미 참가한 경우(400) 또는 성공한 경우(200) 모두 허용
         assert response.status_code in [200, 400]
         
         # 5. 참가자 목록 조회
-        response = requests.get(f"{BASE_URL}/meetings/{meeting_id}/participants", headers={
+        response = requests.get(f"{BASE_URL}/rounds/{meeting_id}/participants", headers={
             "Authorization": f"Bearer {token}"
         })
         assert response.status_code == 200

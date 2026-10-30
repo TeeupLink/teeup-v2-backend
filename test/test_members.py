@@ -8,6 +8,9 @@ import time
 # API 기본 URL
 BASE_URL = "http://localhost:8002/api/v1"
 
+# 서버 없이 in-process 로 돈다. 실서버 대상은 TEEUP_LIVE_API_URL (conftest 의 legacy_api 참고)
+pytestmark = pytest.mark.usefixtures("legacy_api")
+
 
 class TestClubMembers:
     """클럽 멤버 관리 테스트 클래스"""
@@ -33,7 +36,9 @@ class TestClubMembers:
             "name": f"테스트 골프클럽 {int(time.time())}",
             "description": "테스트용 골프클럽입니다",
             "member_count": 10,
-            "location": "서울시 강남구",
+            # 클럽 지역은 자유 입력 location 에서 시도/군구 코드로 바뀌었다 (서울 강남구)
+            "sido_code": "11",
+            "gungu_codes": ["11680"],
             "contact_info": "010-1234-5678",
             "representative_name": "김테스트",
             "additional_info": "매주 토요일 정기 라운딩"
@@ -156,8 +161,12 @@ class TestClubMembers:
         print(f"Response content: {response.text}")
         
         assert response.status_code == 200
-        data = response.json()
+        # 멤버 목록은 리스트에서 페이지네이션 응답 {data, total, page, limit, total_pages} 으로 바뀌었다
+        body = response.json()
+        assert isinstance(body, dict)
+        data = body["data"]
         assert isinstance(data, list)
+        assert body["total"] == len(data)
         # 최소 1명의 멤버(클럽 생성자)가 있어야 함
         assert len(data) >= 1
         
@@ -180,7 +189,8 @@ class TestClubMembers:
         print(f"Response status: {response.status_code}")
         print(f"Response content: {response.text}")
         
-        assert response.status_code == 403
+        # 인증 의존성이 HTTPBearer(auto_error=False) + 401 로 바뀌어 토큰이 없으면 403 이 아니라 401
+        assert response.status_code == 401
     
     def test_get_club_members_not_member(self):
         """클럽 멤버가 아닌 사용자가 멤버 목록 조회 시도"""
@@ -302,8 +312,9 @@ class TestClubMembers:
         token = self.get_auth_token()
         club_id = self.create_test_club()
         headers = self.get_auth_headers(token)
+        # user_id 는 문자열 ID 에서 정수 PK 로 바뀌었다. 문자열을 주면 404 가 아니라 422 다
         member_data = {
-            "user_id": "nonexistent_user_id",
+            "user_id": 999999,
             "role": "MEMBER"
         }
         
@@ -416,11 +427,10 @@ class TestClubMembers:
         headers = self.get_auth_headers(token)
         
         # 현재 사용자 ID를 얻기 위해 사용자 정보 조회
-        user_info_response = requests.get(f"{BASE_URL}/users/me", headers=headers)
-        if user_info_response.status_code == 200:
-            user_id = user_info_response.json()["id"]
-        else:
-            pytest.skip("사용자 정보 조회 실패")
+        # (GET /users/me 는 없어졌다 — users 라우터에는 PUT /users/me 만 있다. 조회는 /auth/me)
+        user_info_response = requests.get(f"{BASE_URL}/auth/me", headers=headers)
+        assert user_info_response.status_code == 200
+        user_id = user_info_response.json()["id"]
         
         response = requests.delete(
             f"{BASE_URL}/clubs/{club_id}/members/{user_id}",
@@ -458,7 +468,7 @@ class TestClubMembers:
         headers = self.get_auth_headers(token)
         
         response = requests.delete(
-            f"{BASE_URL}/clubs/{club_id}/members/nonexistent_user_id",
+            f"{BASE_URL}/clubs/{club_id}/members/999999",  # user_id 는 정수 PK
             headers=headers
         )
         
@@ -478,7 +488,7 @@ class TestClubMembers:
         # 1. 초기 멤버 목록 확인
         response = requests.get(f"{BASE_URL}/clubs/{club_id}/members", headers=headers)
         assert response.status_code == 200
-        initial_members = response.json()
+        initial_members = response.json()["data"]  # 페이지네이션 응답
         initial_count = len(initial_members)
         
         # 2. 새 멤버 추가
@@ -496,7 +506,7 @@ class TestClubMembers:
         # 3. 멤버 목록 재확인
         response = requests.get(f"{BASE_URL}/clubs/{club_id}/members", headers=headers)
         assert response.status_code == 200
-        updated_members = response.json()
+        updated_members = response.json()["data"]
         assert len(updated_members) == initial_count + 1
         
         # 4. 멤버 역할 변경
@@ -527,5 +537,5 @@ class TestClubMembers:
         # 6. 최종 멤버 목록 확인
         response = requests.get(f"{BASE_URL}/clubs/{club_id}/members", headers=headers)
         assert response.status_code == 200
-        final_members = response.json()
+        final_members = response.json()["data"]
         assert len(final_members) == initial_count
