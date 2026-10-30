@@ -871,8 +871,9 @@ async def get_meeting(meeting_id: int,
         meeting_dict = {col.key: getattr(meeting, col.key) for col in Meeting.__table__.columns}
         meeting_dict["tee_times"] = meeting.tee_times or []
         
-        return MeetingResponse(
-            **meeting_dict,
+        # 컬럼 값 위에 가공한 값을 덮어쓴다. 예전에는 **meeting_dict 와 같은 키를 키워드로
+        # 한 번 더 넘겨 TypeError(같은 인자 두 번) 로 항상 500 이었다
+        return MeetingResponse(**{**meeting_dict, **dict(
             name=meeting.name,
             description=meeting.description,
             location=meeting.location,
@@ -909,7 +910,7 @@ async def get_meeting(meeting_id: int,
             settlement_enabled=club_settlement_enabled(club),
             created_at=meeting.created_at,
             updated_at=meeting.updated_at
-        )
+        )})
         
     except HTTPException:
         raise

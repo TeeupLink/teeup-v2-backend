@@ -297,11 +297,6 @@ class TestMeetings:
         assert "data" in data
         assert isinstance(data["data"], list)
     
-    @pytest.mark.xfail(
-        strict=True,
-        reason="앱 버그: GET /meetings/{id} 가 MeetingResponse(**meeting_dict, name=...) 로 같은 키를 두 번 넘겨 "
-               "항상 TypeError -> 500 (routers/meetings/base.py get_meeting)",
-    )
     def test_get_meeting_detail(self):
         """미팅 상세 정보 조회"""
         # 먼저 미팅 생성
@@ -476,8 +471,7 @@ class TestMeetings:
         meeting_id = self.create_test_meeting(club_id)
         
         # 3. 미팅 정보 조회
-        # GET /meetings/{id} 는 앱 버그로 500 이다 (test_get_meeting_detail 의 xfail 참고).
-        # 앱이 쓰는 라운딩 상세 /rounds/{id} 로 흐름을 검증한다.
+        # 앱이 쓰는 라운딩 상세 /rounds/{id} 로 흐름을 검증한다 (공통 상세 /meetings/{id} 는 test_get_meeting_detail).
         token = self.get_auth_token()
         response = requests.get(f"{BASE_URL}/rounds/{meeting_id}", headers={
             "Authorization": f"Bearer {token}"
