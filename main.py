@@ -37,7 +37,7 @@ import logging
 from config import settings
 from database import get_db, init_database, test_connection
 from routers import (auth, plans, payments, payment_webhook, payment_methods, region, subscriptions, users, terms, notices, inquiries,
-                     upload, admin, oauth, faq, moderation)
+                     upload, admin, oauth, faq, moderation, app_version)
 from routers.internal import loadtest_router
 from routers.clubs import (
     base_router as clubs_router,
@@ -226,6 +226,9 @@ app.include_router(loadtest_router, prefix="/api/v1")
 
 # 외부 데이터 관련 API 라우터
 app.include_router(region.region_router, prefix="/api/v1")
+# /app/version - 강제 업데이트 정책. 차단된 사용자는 로그인도 못 하는
+# 상태일 수 있어 인증을 걸지 않는다.
+app.include_router(app_version.router, prefix="/api/v1")
 
 # 정적 파일 서빙.
 # 라우터를 모두 등록한 뒤에 단다. /api/ 로 시작하는 요청은 미들웨어가

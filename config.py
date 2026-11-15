@@ -51,6 +51,34 @@ class Settings(BaseSettings):
     # CORS
     CORS_ORIGINS: str = ""
 
+    # 앱 강제 업데이트
+    # 스토어에 올라간 버전보다 낮은 앱을 못 쓰게 막는 기준값이다.
+    # 코드 재배포 없이 Cloud Run 환경변수만 바꿔서 차단 시점을 정한다.
+    #
+    # 기본값 "0.0.0" 은 아무도 막지 않는다. 이 기능을 배포하는 것만으로
+    # 누가 잠기면 안 되고, 잘못 걸면 사용자는 앱을 아예 못 쓴다.
+    # 막을 때가 되면 APP_MIN_VERSION_* 를 올린다.
+    #
+    # 차단은 이 확인 코드가 들어간 앱 버전부터만 동작한다. 그보다 낮은
+    # 버전(예: 2026-09-27 빌드)에는 확인 코드가 없어 막을 수 없다.
+    APP_MIN_VERSION_IOS: str = "0.0.0"
+    APP_MIN_VERSION_ANDROID: str = "0.0.0"
+
+    # 안내에 "최신 x.y.z" 로 보여줄 값. 비워 두면 버전 표기를 생략한다.
+    APP_LATEST_VERSION_IOS: str = ""
+    APP_LATEST_VERSION_ANDROID: str = ""
+
+    # 스토어 앱을 바로 띄우는 스킴. 실패하면 앱이 아래 https 주소로 넘긴다.
+    APP_STORE_URL_IOS: str = "itms-apps://apps.apple.com/kr/app/id6801782217"
+    APP_STORE_URL_ANDROID: str = "market://details?id=com.pixencrew.teeup"
+    APP_STORE_WEB_URL_IOS: str = "https://apps.apple.com/kr/app/id6801782217"
+    APP_STORE_WEB_URL_ANDROID: str = (
+        "https://play.google.com/store/apps/details?id=com.pixencrew.teeup"
+    )
+
+    # 차단 화면에 덧붙일 한 줄. 비우면 앱 기본 문구를 쓴다.
+    APP_UPDATE_MESSAGE: str = ""
+
     # Auth Cookies
     AUTH_ACCESS_COOKIE_NAME: str = "teeup_access_token"
     AUTH_REFRESH_COOKIE_NAME: str = "teeup_refresh_token"
