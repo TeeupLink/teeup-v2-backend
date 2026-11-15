@@ -20,6 +20,8 @@ from .kpi import router as kpi_router
 from .upload import router as upload_router
 from .profile import router as profile_router
 from .payments import router as payments_router
+from .billing import router as billing_router
+from .billing_sandbox import router as billing_sandbox_router
 from .terms import router as terms_router
 from .notices import router as notices_router
 from .inquiries import router as inquiries_router
@@ -60,6 +62,8 @@ router.include_router(terms_router, dependencies=[Depends(require_resource("cont
 router.include_router(inquiries_router, dependencies=[Depends(require_resource("inquiries"))])
 router.include_router(reports_router, dependencies=[Depends(require_resource("reports"))])
 router.include_router(payments_router, dependencies=[Depends(require_resource("payments"))])
+router.include_router(billing_router, dependencies=[Depends(require_resource("payments"))])
+router.include_router(billing_sandbox_router, dependencies=[Depends(require_resource("billingSandbox"))])
 router.include_router(audit_logs_router, dependencies=[Depends(require_resource("auditLogs"))])
 
 # 대시보드/업로드/알림/선택용 조회: 모든 역할 접근 가능 (항목별 범위는 각 엔드포인트가 거른다)

@@ -62,11 +62,11 @@ def test_구독_상태는_Enum_이_아니라_문자열이다():
 
 
 def test_구독_모델에_없는_컬럼을_응답에_넣지_않는다():
+    """canceled_at / cancel_reason 은 backend #51 에서 모델에 생겼지만 앱 응답 스키마에는 여전히 없다"""
     from models import Subscription
 
     cols = {c.name for c in Subscription.__table__.columns}
-    assert "canceled_at" not in cols
-    assert "cancel_reason" not in cols
+    assert {"canceled_at", "cancel_reason"} <= cols
 
     src = open(
         os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),

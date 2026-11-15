@@ -1,370 +1,273 @@
 """
-백오피스 결제/플랜/구독/환불 API
+백오피스 결제 내역·요금제 API (backend #51, backoffice API스펙 API-120~124)
+
+- 결제 상태는 저장값(SUCCEEDED·CANCELED·FAILED·PENDING)에 취소 합계를 더해 PARTIAL_CANCELED 를 만든다
+- 취소·환불·요금제 변경은 쓰기 권한(최고 관리자)만. 고객지원은 조회만 한다 (permissions.py "payments")
+- 예전 /refunds 는 /payments?status=CANCELED 로 대신한다 (status_filter 를 무시하던 버그)
 """
-from datetime import datetime, date
-from fastapi import APIRouter, Depends, HTTPException, status
+import csv
+import io
+from datetime import datetime, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
-import logging
 
 from database import get_db
-from models import ClubMembership, Meeting, MeetingParticipant
-from schemas import MeetingType
-from .deps import get_admin_user
+from models import Admin, BillingCharge, Payment, PaymentCancel, Plan, Subscription, User
+from services.billing import cancel as cancel_service
+from services.billing import toss
+from utils import audit
+from utils.datetime_utils import get_kst_now
 
-logger = logging.getLogger(__name__)
+from .deps import get_admin_user
+from .pagination import PageParams, apply_sort, paginate
 
 router = APIRouter(tags=["admin-payments"])
 
+PAYMENT_STATUSES = ("SUCCEEDED", "PARTIAL_CANCELED", "CANCELED", "FAILED", "PENDING")
+EXPORT_MAX = 10000
+_DATE = r"^\d{4}-\d{2}-\d{2}$"
+
+
+def _iso(d):
+    return d.isoformat() if d else None
+
+
+def _user(u: User | None) -> dict | None:
+    return {"id": u.id, "nickname": u.nickname, "realname": u.realname} if u else None
+
+
+def _canceled_sub(db: Session):
+    return (db.query(PaymentCancel.payment_id, func.sum(PaymentCancel.cancel_amount).label("canceled"))
+            .group_by(PaymentCancel.payment_id).subquery())
+
+
+class _Filters:
+    def __init__(
+        self,
+        status_: list[str] = Query([], alias="status"),
+        user_id: int | None = Query(None),
+        method: str | None = Query(None, max_length=50),
+        date_from: str | None = Query(None, pattern=_DATE),
+        date_to: str | None = Query(None, pattern=_DATE),
+    ):
+        bad = [s for s in status_ if s not in PAYMENT_STATUSES]
+        if bad:
+            raise HTTPException(status_code=422, detail="알 수 없는 결제 상태입니다")
+        self.statuses, self.user_id, self.method, self.date_from, self.date_to = status_, user_id, method, date_from, date_to
+
+
+def _query(db: Session, f: _Filters, q: str | None):
+    cs = _canceled_sub(db)
+    canceled = func.coalesce(cs.c.canceled, 0)
+    query = (db.query(Payment, User, canceled.label("canceled"))
+             .outerjoin(cs, cs.c.payment_id == Payment.id)
+             .outerjoin(User, User.id == Payment.user_id))
+    if f.statuses:
+        conds = {
+            "SUCCEEDED": (Payment.status == "SUCCEEDED") & (canceled == 0),
+            "PARTIAL_CANCELED": (Payment.status == "SUCCEEDED") & (canceled > 0),
+            "CANCELED": Payment.status == "CANCELED",
+            "FAILED": Payment.status == "FAILED",
+            "PENDING": Payment.status == "PENDING",
+        }
+        query = query.filter(or_(*[conds[s] for s in f.statuses]))
+    if f.user_id:
+        query = query.filter(Payment.user_id == f.user_id)
+    if f.method:
+        query = query.filter(Payment.method == f.method)
+    if f.date_from:
+        query = query.filter(Payment.created_at >= datetime.strptime(f.date_from, "%Y-%m-%d"))
+    if f.date_to:
+        query = query.filter(Payment.created_at < datetime.strptime(f.date_to, "%Y-%m-%d") + timedelta(days=1))
+    if q:
+        query = query.filter(or_(Payment.order_id.contains(q), Payment.order_name.contains(q), User.nickname.contains(q)))
+    return query
+
+
+def _row(t) -> dict:
+    p, u, canceled = t
+    canceled = int(canceled or 0)
+    return {
+        "id": p.id,
+        "order_id": p.order_id,
+        "order_name": p.order_name,
+        "amount": int(p.amount),
+        "canceled_amount": canceled,
+        "balance": int(p.amount) - canceled,
+        "status": cancel_service.display_status(p, canceled),
+        "method": p.method,
+        "user": _user(u),
+        "approved_at": _iso(p.approved_at),
+        "created_at": _iso(p.created_at),
+    }
+
 
 @router.get("/payments")
-async def get_admin_payments(
-    page: int = 1,
-    size: int = 20,
-    status_filter: str | None = None,
-    user_id: int | None = None,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 결제 목록 조회"""
-    try:
-        from models import Payment, PaymentStatus
-        from sqlalchemy import desc
-
-        query = db.query(Payment)
-        if status_filter:
-            query = query.filter(Payment.status == PaymentStatus(status_filter))
-        if user_id:
-            query = query.filter(Payment.user_id == user_id)
-        total = query.count()
-        payments = query.order_by(desc(Payment.created_at)).offset((page - 1) * size).limit(size).all()
-        payment_responses = []
-        for p in payments:
-            payment_responses.append({
-                "id": p.id, "user_id": p.user_id, "subscription_id": p.subscription_id,
-                "amount": float(p.amount), "currency": p.currency, "status": p.status.value,
-                "payment_method": p.payment_method.value,
-                "payment_provider": getattr(p, "payment_provider", "TOSS_PAYMENTS"),
-                "provider_payment_id": getattr(p, "provider_payment_id", ""),
-                "payment_key": p.payment_key, "order_id": p.order_id, "order_name": p.order_name,
-                "transaction_id": p.transaction_id,
-                "paid_at": p.paid_at.isoformat() if p.paid_at else None,
-                "canceled_at": p.canceled_at.isoformat() if p.canceled_at else None,
-                "cancel_reason": p.cancel_reason, "description": p.description,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-            })
-        return {"data": payment_responses, "total": total, "page": page, "size": size}
-    except Exception as e:
-        logger.error(f"관리자 결제 목록 조회 중 오류: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="결제 목록 조회 중 오류가 발생했습니다",
-        )
+async def list_payments(params: PageParams = Depends(), f: _Filters = Depends(), db: Session = Depends(get_db),
+                        current_user: dict = Depends(get_admin_user)):
+    """결제 내역 (API-120). 기본 최신순"""
+    query = apply_sort(_query(db, f, params.q), params.sort,
+                       {"created_at": Payment.created_at, "approved_at": Payment.approved_at, "amount": Payment.amount},
+                       (Payment.created_at.desc(), Payment.id.desc()))
+    return paginate(query, params, _row)
 
 
-@router.get("/plans")
-async def get_admin_plans(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 플랜 목록 조회"""
-    try:
-        from models import Plan
-        from sqlalchemy import desc
+@router.get("/payments/export")
+async def export_payments(reason: str = Query(..., min_length=1, max_length=500), q: str | None = Query(None, max_length=100),
+                          f: _Filters = Depends(), db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """CSV 내보내기 (API-123). 사유 필수, 감사 로그 EXPORT"""
+    rows = _query(db, f, q).order_by(Payment.created_at.desc(), Payment.id.desc()).limit(EXPORT_MAX + 1).all()
+    if len(rows) > EXPORT_MAX:
+        raise HTTPException(status_code=422, detail=f"한 번에 {EXPORT_MAX}건까지 내보낼 수 있습니다. 기간을 줄여 주세요")
+    audit.record("EXPORT", "PAYMENT", None, reason=reason,
+                 meta={"count": len(rows), "filters": {"status": f.statuses, "user_id": f.user_id, "method": f.method,
+                                                        "date_from": f.date_from, "date_to": f.date_to, "q": q}})
+    buf = io.StringIO()
+    buf.write("﻿")  # 엑셀이 UTF-8 로 읽도록
+    w = csv.writer(buf)
+    w.writerow(["id", "주문번호", "상품", "회원 ID", "닉네임", "금액", "취소 금액", "잔액", "상태", "수단", "승인일시", "생성일시"])
+    for t in rows:
+        r = _row(t)
+        u = r["user"] or {}
+        w.writerow([r["id"], r["order_id"], r["order_name"], u.get("id"), u.get("nickname"), r["amount"], r["canceled_amount"],
+                    r["balance"], r["status"], r["method"], r["approved_at"], r["created_at"]])
+    filename = f"payments-{get_kst_now():%Y%m%d-%H%M}.csv"
+    return StreamingResponse(iter([buf.getvalue()]), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
-        plans = db.query(Plan).order_by(desc(Plan.created_at)).limit(20).all()
-        plan_list = []
-        for p in plans:
-            plan_list.append({
-                "id": p.id, "name": p.name, "description": p.description,
-                "detailed_description": getattr(p, "detailed_description", ""),
-                "type": p.type.value if p.type else "BASIC",
-                "price": float(p.price) if p.price else 0,
-                "billing_cycle": p.billing_cycle.value if p.billing_cycle else "MONTHLY",
-                "features": p.features, "max_clubs": p.max_clubs,
-                "max_members_per_club": p.max_members_per_club,
-                "max_meetings_per_month": p.max_meetings_per_month,
-                "is_active": p.is_active,
-                "created_at": p.created_at.isoformat() if p.created_at else None,
-                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
-            })
-        return {"data": plan_list, "total": len(plan_list)}
-    except Exception as e:
-        logger.error(f"관리자 플랜 목록 조회 중 오류: {str(e)}")
-        return {"data": [], "total": 0}
+
+def _get_payment(db: Session, payment_id: int) -> Payment:
+    p = db.get(Payment, payment_id)
+    if not p:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="결제 내역을 찾을 수 없습니다")
+    return p
+
+
+def _detail(db: Session, p: Payment) -> dict:
+    canceled = cancel_service.canceled_total(db, p.id)
+    u = db.get(User, p.user_id) if p.user_id else None
+    out = _row((p, u, canceled))
+    cancels = (db.query(PaymentCancel, Admin.email).outerjoin(Admin, Admin.id == PaymentCancel.canceled_by_admin_id)
+               .filter(PaymentCancel.payment_id == p.id).order_by(PaymentCancel.created_at, PaymentCancel.id).all())
+    charge = db.query(BillingCharge).filter(BillingCharge.payment_id == p.id).first()
+    out.update({
+        "payment_key": p.payment_key,
+        "requested_at": _iso(p.requested_at),
+        "subscription_id": charge.subscription_id if charge else None,
+        "cancels": [{"id": c.id, "amount": c.cancel_amount, "reason": c.cancel_reason, "transaction_key": c.transaction_key,
+                     "admin_email": email, "created_at": _iso(c.created_at)} for c, email in cancels],
+    })
+    return out
+
+
+@router.get("/payments/{payment_id}")
+async def get_payment(payment_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """결제 상세 + 취소 이력 (API-121). 회원 정보가 보이므로 VIEW_PII 로 남긴다"""
+    p = _get_payment(db, payment_id)
+    audit.record("VIEW_PII", "PAYMENT", p.id)
+    return _detail(db, p)
+
+
+class CancelBody(BaseModel):
+    amount: int | None = Field(None, ge=1, description="비우면 잔액 전부")
+    reason: str = Field(..., min_length=1, max_length=200)
 
 
 @router.post("/payments/{payment_id}/cancel")
-async def admin_cancel_payment(
-    payment_id: int,
-    cancel_data: dict,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 결제 취소"""
+async def cancel_payment(payment_id: int, body: CancelBody, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """전액 취소·부분 환불 (API-122). 토스 오류는 코드·메시지를 그대로 400 으로 돌려준다"""
+    p = _get_payment(db, payment_id)
+    before = {"status": p.status, "balance": cancel_service.balance(db, p)}
+    reason = body.reason.strip()
     try:
-        from models import Payment, PaymentStatus, Subscription
-
-        payment = db.query(Payment).filter(Payment.id == payment_id).first()
-        if not payment:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="결제 내역을 찾을 수 없습니다")
-        if payment.status != PaymentStatus.SUCCEEDED:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="취소 가능한 결제가 아닙니다")
-        user_id = payment.user_id
-        payment_date = payment.created_at.date()
-        today = date.today()
-        club_memberships_count = db.query(ClubMembership).filter(
-            ClubMembership.user_id == user_id, ClubMembership.created_at >= payment_date
-        ).count()
-        meeting_participations_count = db.query(MeetingParticipant).filter(
-            MeetingParticipant.user_id == user_id, MeetingParticipant.created_at >= payment_date
-        ).count()
-        socials_count = db.query(Meeting).filter(
-            Meeting.meeting_type == MeetingType.SOCIAL,
-            Meeting.club_id.in_(db.query(ClubMembership.club_id).filter(ClubMembership.user_id == user_id)),
-            Meeting.created_at >= payment_date,
-        ).count()
-        has_activity = club_memberships_count > 0 or meeting_participations_count > 0 or socials_count > 0
-        is_same_day = payment_date == today
-        policy_info = {
-            "is_same_day": is_same_day, "has_activity": has_activity,
-            "club_memberships": club_memberships_count,
-            "meeting_participations": meeting_participations_count,
-            "socials_created": socials_count,
-        }
-        if is_same_day and not has_activity:
-            if payment.payment_key:
-                from utils.toss_payments import toss_payments
-                try:
-                    toss_result = toss_payments.cancel_payment(
-                        payment_key=payment.payment_key,
-                        cancel_reason=cancel_data.get("reason", "관리자 취소"),
-                        cancel_amount=cancel_data.get("amount"),
-                    )
-                    payment.status = PaymentStatus.CANCELED
-                    payment.canceled_at = datetime.now()
-                    payment.cancel_reason = cancel_data.get("reason", "관리자 취소")
-                    db.commit()
-                    return {"success": True, "cancel_type": "refund", "message": "결제가 성공적으로 취소되었습니다. (즉시 환불)", "toss_result": toss_result, "policy_info": policy_info}
-                except Exception as toss_error:
-                    logger.error(f"토스페이먼츠 취소 실패: {str(toss_error)}")
-                    if "404" in str(toss_error) or "Not Found" in str(toss_error):
-                        payment.status = PaymentStatus.CANCELED
-                        payment.canceled_at = datetime.now()
-                        payment.cancel_reason = cancel_data.get("reason", "관리자 취소")
-                        db.commit()
-                        return {"success": True, "cancel_type": "refund", "message": "결제가 성공적으로 취소되었습니다. (테스트 결제 - 내부 처리)", "policy_info": policy_info}
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"결제 취소 실패: {str(toss_error)}")
-            else:
-                payment.status = PaymentStatus.CANCELED
-                payment.canceled_at = datetime.now()
-                payment.cancel_reason = cancel_data.get("reason", "관리자 취소")
-                db.commit()
-                return {"success": True, "cancel_type": "refund", "message": "결제가 성공적으로 취소되었습니다. (즉시 환불)", "policy_info": policy_info}
-        else:
-            active_subscription = db.query(Subscription).filter(Subscription.user_id == user_id, Subscription.status == "ACTIVE").first()
-            if active_subscription:
-                active_subscription.status = "CANCELED"
-                if hasattr(active_subscription, "CANCELED_at"):
-                    active_subscription.CANCELED_at = datetime.now()
-                if hasattr(active_subscription, "cancel_reason"):
-                    active_subscription.cancel_reason = cancel_data.get("reason", "관리자 취소")
-                db.commit()
-                return {"success": True, "cancel_type": "subscription_cancel", "message": "구독이 다음달부터 해지됩니다. (현재 달은 유지)", "policy_info": {**policy_info, "subscription_id": active_subscription.id}}
-            else:
-                payment.status = PaymentStatus.CANCELED
-                payment.canceled_at = datetime.now()
-                payment.cancel_reason = cancel_data.get("reason", "관리자 취소")
-                db.commit()
-                return {"success": True, "cancel_type": "payment_cancel", "message": "결제가 취소되었습니다. (활성 구독 없음)", "policy_info": policy_info}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"관리자 결제 취소 중 오류: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
-
-
-@router.get("/refunds")
-async def get_admin_refunds(
-    page: int = 1,
-    size: int = 20,
-    status_filter: str | None = None,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 환불 내역 조회"""
-    try:
-        from models import Payment, PaymentStatus, User
-        from sqlalchemy import desc
-
-        query = db.query(Payment).join(User, Payment.user_id == User.id).filter(Payment.status == PaymentStatus.FAILED).filter(Payment.canceled_at.isnot(None))
-        total = query.count()
-        refunds = query.order_by(desc(Payment.canceled_at)).offset((page - 1) * size).limit(size).all()
-        refund_responses = []
-        for r in refunds:
-            refund_responses.append({
-                "id": r.id, "user_id": r.user_id,
-                "user_name": r.user.nickname if r.user else "알 수 없음",
-                "user_email": r.user.email if r.user else "알 수 없음",
-                "amount": float(r.amount), "currency": r.currency,
-                "payment_method": r.payment_method.value if r.payment_method else "알 수 없음",
-                "order_name": r.order_name, "cancel_reason": r.cancel_reason,
-                "canceled_at": r.canceled_at.isoformat() if r.canceled_at else None,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-                "payment_key": r.payment_key,
-            })
-        return {"data": refund_responses, "total": total, "page": page, "size": size, "total_pages": (total + size - 1) // size}
-    except Exception as e:
-        logger.error(f"관리자 환불 내역 조회 중 오류: {str(e)}")
-        return {"data": [], "total": 0}
-
-
-@router.post("/plans")
-async def create_admin_plan(
-    plan_data: dict,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 플랜 생성"""
-    try:
-        from models import Plan, PlanType, BillingCycle
-
-        plan = Plan(
-            name=plan_data.get("name"),
-            description=plan_data.get("description"),
-            detailed_description=plan_data.get("detailed_description", ""),
-            type=PlanType(plan_data.get("type", "BASIC")),
-            price=plan_data.get("price", 0),
-            billing_cycle=BillingCycle(plan_data.get("billing_cycle", "MONTHLY")),
-            features=plan_data.get("features", {}),
-            max_clubs=plan_data.get("max_clubs"),
-            max_members_per_club=plan_data.get("max_members_per_club"),
-            max_meetings_per_month=plan_data.get("max_meetings_per_month"),
-            is_active=plan_data.get("is_active", True),
-        )
-        db.add(plan)
-        db.commit()
-        db.refresh(plan)
-        return {
-            "id": plan.id, "name": plan.name, "description": plan.description,
-            "detailed_description": getattr(plan, "detailed_description", ""),
-            "type": plan.type.value, "price": float(plan.price),
-            "billing_cycle": plan.billing_cycle.value, "features": plan.features,
-            "max_clubs": plan.max_clubs, "max_members_per_club": plan.max_members_per_club,
-            "max_meetings_per_month": plan.max_meetings_per_month, "is_active": plan.is_active,
-            "created_at": plan.created_at.isoformat() if plan.created_at else None,
-            "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
-        }
-    except Exception as e:
-        logger.error(f"관리자 플랜 생성 중 오류: {str(e)}")
+        row = cancel_service.cancel_payment(db, p, amount=body.amount, reason=reason, admin_id=current_user.get("id"))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except toss.TossError as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"플랜 생성 실패: {str(e)}")
+        audit.record("UPDATE", "PAYMENT", p.id, before=before, reason=reason, result="FAIL", meta={"toss_code": e.code})
+        raise HTTPException(status_code=400, detail=f"토스 취소 실패: {e.message} ({e.code})")
+    audit.record("UPDATE", "PAYMENT", p.id, before=before, after={"status": p.status, "balance": cancel_service.balance(db, p)},
+                 reason=reason, meta={"cancel_id": row.id, "cancel_amount": row.cancel_amount})
+    return _detail(db, p)
+
+
+# ---- 요금제 ----------------------------------------------------------------
+
+_PLAN_FIELDS = ("name", "description", "type", "price", "billing_cycle", "is_active")
+
+
+def _plan(p: Plan, subscribers: int) -> dict:
+    return {
+        "id": p.id, "name": p.name, "description": p.description, "type": p.type, "price": int(p.price or 0),
+        "billing_cycle": p.billing_cycle, "is_active": bool(p.is_active), "subscribers": subscribers,
+        "created_at": _iso(p.created_at), "updated_at": _iso(p.updated_at),
+    }
+
+
+def _subscriber_counts(db: Session) -> dict[int, int]:
+    rows = (db.query(Subscription.plan_id, func.count(Subscription.id)).filter(Subscription.status != "CANCELED")
+            .group_by(Subscription.plan_id).all())
+    return dict(rows)
+
+
+@router.get("/plans")
+async def list_plans(db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """요금제 전체 (API-124). 개수가 적어 페이징하지 않는다. 구독자 수 = 해지 안 된 구독"""
+    counts = _subscriber_counts(db)
+    plans = db.query(Plan).order_by(Plan.is_active.desc(), Plan.price, Plan.id).all()
+    return {"items": [_plan(p, counts.get(p.id, 0)) for p in plans], "total": len(plans)}
+
+
+class PlanBody(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = Field(None, max_length=1000)
+    type: str = Field("BASIC", max_length=50)
+    price: int = Field(..., ge=0, le=10_000_000, description="원")
+    billing_cycle: str = Field("MONTHLY", pattern="^(MONTHLY|QUARTERLY|YEARLY)$")
+    is_active: bool = True
+
+
+@router.post("/plans", status_code=201)
+async def create_plan(body: PlanBody, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    p = Plan(**body.model_dump())
+    db.add(p)
+    db.commit()
+    audit.record("CREATE", "PLAN", p.id, after=audit.snapshot(p, _PLAN_FIELDS))
+    return _plan(p, 0)
+
+
+def _get_plan(db: Session, plan_id: int) -> Plan:
+    p = db.get(Plan, plan_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="요금제를 찾을 수 없습니다")
+    return p
 
 
 @router.put("/plans/{plan_id}")
-async def update_admin_plan(
-    plan_id: int,
-    plan_data: dict,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 플랜 수정"""
-    try:
-        from models import Plan, PlanType, BillingCycle
-
-        plan = db.query(Plan).filter(Plan.id == plan_id).first()
-        if not plan:
-            raise HTTPException(status_code=404, detail="플랜을 찾을 수 없습니다")
-        if "name" in plan_data:
-            plan.name = plan_data["name"]
-        if "description" in plan_data:
-            plan.description = plan_data["description"]
-        if "detailed_description" in plan_data:
-            plan.detailed_description = plan_data["detailed_description"]
-        if "type" in plan_data:
-            plan.type = PlanType(plan_data["type"])
-        if "price" in plan_data:
-            plan.price = plan_data["price"]
-        if "billing_cycle" in plan_data:
-            plan.billing_cycle = BillingCycle(plan_data["billing_cycle"])
-        if "features" in plan_data:
-            plan.features = plan_data["features"]
-        if "max_clubs" in plan_data:
-            plan.max_clubs = plan_data["max_clubs"]
-        if "max_members_per_club" in plan_data:
-            plan.max_members_per_club = plan_data["max_members_per_club"]
-        if "max_meetings_per_month" in plan_data:
-            plan.max_meetings_per_month = plan_data["max_meetings_per_month"]
-        if "is_active" in plan_data:
-            plan.is_active = plan_data["is_active"]
-        db.commit()
-        db.refresh(plan)
-        return {
-            "id": plan.id, "name": plan.name, "description": plan.description,
-            "detailed_description": getattr(plan, "detailed_description", ""),
-            "type": plan.type.value, "price": float(plan.price),
-            "billing_cycle": plan.billing_cycle.value, "features": plan.features,
-            "max_clubs": plan.max_clubs, "max_members_per_club": plan.max_members_per_club,
-            "max_meetings_per_month": plan.max_meetings_per_month, "is_active": plan.is_active,
-            "created_at": plan.created_at.isoformat() if plan.created_at else None,
-            "updated_at": plan.updated_at.isoformat() if plan.updated_at else None,
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"관리자 플랜 수정 중 오류: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"플랜 수정 실패: {str(e)}")
+async def update_plan(plan_id: int, body: PlanBody, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """금액을 바꾸면 다음 청구부터 새 금액이 적용된다 (이미 만든 청구는 그대로)"""
+    p = _get_plan(db, plan_id)
+    before = audit.snapshot(p, _PLAN_FIELDS)
+    for k, v in body.model_dump().items():
+        setattr(p, k, v)
+    db.commit()
+    audit.record("UPDATE", "PLAN", p.id, before=before, after=audit.snapshot(p, _PLAN_FIELDS))
+    return _plan(p, _subscriber_counts(db).get(p.id, 0))
 
 
 @router.delete("/plans/{plan_id}")
-async def delete_admin_plan(
-    plan_id: int,
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 플랜 삭제"""
-    try:
-        from models import Plan, Subscription
-
-        plan = db.query(Plan).filter(Plan.id == plan_id).first()
-        if not plan:
-            raise HTTPException(status_code=404, detail="플랜을 찾을 수 없습니다")
-        active_count = db.query(Subscription).filter(Subscription.plan_id == plan_id, Subscription.status == "ACTIVE").count()
-        if active_count > 0:
-            raise HTTPException(status_code=400, detail="활성 구독이 있는 플랜은 삭제할 수 없습니다")
-        db.delete(plan)
-        db.commit()
-        return {"message": "플랜이 성공적으로 삭제되었습니다", "success": True}
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"관리자 플랜 삭제 중 오류: {str(e)}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"플랜 삭제 실패: {str(e)}")
-
-
-@router.get("/subscriptions")
-async def get_admin_subscriptions(
-    db: Session = Depends(get_db),
-    current_user: dict = Depends(get_admin_user),
-):
-    """관리자용 구독 목록 조회"""
-    try:
-        from models import Subscription
-        from sqlalchemy import desc
-
-        subscriptions = db.query(Subscription).order_by(desc(Subscription.created_at)).limit(20).all()
-        subscription_list = []
-        for s in subscriptions:
-            subscription_list.append({
-                "id": s.id, "user_id": s.user_id, "plan_id": s.plan_id,
-                "status": s.status.value,
-                "start_date": s.start_date.isoformat() if s.start_date else None,
-                "end_date": s.end_date.isoformat() if s.end_date else None,
-                "created_at": s.created_at.isoformat() if s.created_at else None,
-            })
-        return {"data": subscription_list, "total": len(subscription_list)}
-    except Exception as e:
-        logger.error(f"관리자 구독 목록 조회 중 오류: {str(e)}")
-        return {"data": [], "total": 0}
+async def delete_plan(plan_id: int, db: Session = Depends(get_db), current_user: dict = Depends(get_admin_user)):
+    """구독(해지 포함) 기록이 있으면 삭제하지 않는다 — 비활성으로 바꾼다"""
+    p = _get_plan(db, plan_id)
+    if db.query(Subscription.id).filter(Subscription.plan_id == p.id).first():
+        raise HTTPException(status_code=409, detail="구독 기록이 있는 요금제는 삭제할 수 없습니다. 비활성으로 바꿔 주세요")
+    before = audit.snapshot(p, _PLAN_FIELDS)
+    db.delete(p)
+    db.commit()
+    audit.record("DELETE", "PLAN", plan_id, before=before)
+    return {"message": "요금제를 삭제했습니다", "success": True}
