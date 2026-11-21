@@ -287,46 +287,21 @@ async def get_rounding_meetings(page: int = Query(1, ge=1),
             meeting_dict = {col.key: getattr(meeting, col.key) for col in Meeting.__table__.columns}
             meeting_dict["tee_times"] = meeting.tee_times or []
             
-            meeting_responses.append(MeetingResponse(
+            # 컬럼 값 위에 가공한 값만 덮어쓴다. 예전에는 **meeting_dict 와 같은 키를
+            # 키워드로 한 번 더 넘겨 TypeError(같은 인자 두 번) 가 나서 이 경로가 항상
+            # 500 이었다. base.py:876 과 types/rounds.py:163 이 쓰는 방식과 같다.
+            meeting_responses.append(MeetingResponse(**{
                 **meeting_dict,
-                id=meeting.id,                name=meeting.name,
-                description=meeting.description,
-                location=meeting.location,
-                venue_name=meeting.venue_name,
-                meeting_time=meeting.meeting_time,
-                application_deadline=meeting.application_deadline,
-                application_closed_early=False,
-                team_formation_mode=meeting.team_formation_mode,
-                team_size=meeting.team_size,
-                is_completed=meeting.is_completed,
-                settlement_confirmed=meeting.settlement_confirmed,
-                tee_time=tee_time,
-                max_participants=meeting.max_participants,
-                social_cost=meeting.social_cost,
-                total_cost=meeting.total_cost,
-                green_fee=meeting.green_fee,
-                caddy_fee=meeting.caddy_fee,
-                cart_fee=meeting.cart_fee,
-                settlement_method=meeting.settlement_method.value if meeting.settlement_method else None,
-                reservation_name=meeting.reservation_name,
-            meeting_type=meeting.meeting_type.value if meeting.meeting_type else None,
-            meeting_subtype=meeting.meeting_subtype.value if meeting.meeting_subtype else None,
-            course_name=meeting.course_name,
-                hole_count=meeting.hole_count,
-                status=meeting.status,
-                cancel_reason=meeting.cancel_reason,
-                club_id=meeting.club_id,
-                club_name=club_name,
-                participant_count=participant_count,
-                created_by=meeting.created_by,
-                created_by_name=created_by_name,
-                team_formation_confirmed_at=meeting.team_formation_confirmed_at,
-                rounding_started_at=meeting.rounding_started_at,
-                rounding_completed_at=meeting.rounding_completed_at,
-                settlement_enabled=club_settlement_enabled(club),
-                created_at=meeting.created_at,
-                updated_at=meeting.updated_at
-            ))
+                "application_closed_early": False,
+                "settlement_method": meeting.settlement_method.value if meeting.settlement_method else None,
+                "meeting_type": meeting.meeting_type.value if meeting.meeting_type else None,
+                "meeting_subtype": meeting.meeting_subtype.value if meeting.meeting_subtype else None,
+                "tee_time": tee_time,
+                "club_name": club_name,
+                "participant_count": participant_count,
+                "created_by_name": created_by_name,
+                "settlement_enabled": club_settlement_enabled(club),
+            }))
         
         return PaginatedResponse(
             data=meeting_responses,
