@@ -256,7 +256,11 @@ def main() -> None:
                 handicap_init=Decimal(str(hc)), handicap=Decimal(str(hc)),
                 handicap_update_method=HandicapUpdateMethod.AUTO if hasattr(HandicapUpdateMethod, "AUTO") else None,
                 provider=Provider.LOCAL, status=UserStatus.ACTIVE,
+                # privacy_collection 이 빠지면 routers/auth.py 의 get_current_active_user 가
+                # 세 플래그(terms_agreement·privacy_policy·privacy_collection)를 모두 보기 때문에
+                # 403 TERMS_NOT_AGREED 로 막혀 데모 계정이 약관 동의 화면에서 못 빠져나온다.
                 needs_terms_agreement=False, terms_agreement=True, privacy_policy=True,
+                privacy_collection=True,
             )
             members.append(u)
             created += int(is_new)
