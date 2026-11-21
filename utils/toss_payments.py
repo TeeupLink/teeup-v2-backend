@@ -123,22 +123,36 @@ def format_amount(amount: float) -> int:
     return int(amount)
 
 def parse_payment_status(toss_status: str) -> str:
-    """토스페이먼츠 상태를 내부 상태로 변환"""
+    """토스페이먼츠 상태를 PaymentStatus 의 값으로 변환.
+
+    반환값은 반드시 PaymentStatus 에 있는 멤버 이름이어야 한다
+    (schemas/enums.py · models/enums.py). 어긋나면 호출 측에서
+    PaymentStatus(...) 가 ValueError 를 던진다.
+    """
     status_map = {
         "DONE": "SUCCEEDED",
-        "CANCELED": "FAILED", 
+        # 취소는 실패가 아니다. PaymentStatus.CANCELED 가 생기기 전에는
+        # FAILED 로 뭉갰는데, 그러면 결제 실패와 사용자 취소가 통계에서
+        # 구분되지 않는다.
+        "CANCELED": "CANCELED",
         "PARTIAL_CANCELED": "SUCCEEDED",
         "ABORTED": "FAILED",
-        "EXPIRED": "FAILED"
+        "EXPIRED": "FAILED",
     }
     return status_map.get(toss_status, "PENDING")
 
+
 def parse_payment_method(toss_method: str) -> str:
-    """토스페이먼츠 결제 수단을 내부 형식으로 변환"""
+    """토스페이먼츠 결제 수단(한글)을 PaymentMethod 의 값으로 변환.
+
+    PaymentMethod 는 CARD / VIRTUAL_ACCOUNT / TRANSFER 셋뿐이다. 예전에는
+    계좌이체를 "BANK_TRANSFER" 로 돌려줘서 PaymentMethod(...) 가
+    ValueError 를 냈다 - 열거형에 없는 값이다.
+    """
     method_map = {
         "카드": "CARD",
         "가상계좌": "VIRTUAL_ACCOUNT",
-        "계좌이체": "BANK_TRANSFER"
+        "계좌이체": "TRANSFER",
     }
     return method_map.get(toss_method, "CARD")
 

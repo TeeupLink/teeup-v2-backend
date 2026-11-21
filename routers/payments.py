@@ -13,7 +13,7 @@ from config import settings
 from database import get_db
 from models import Payment, User
 from schemas import PaymentStatus, PaymentMethod
-from utils.toss_payments import toss_auth_headers
+from utils.toss_payments import toss_auth_headers, parse_payment_method
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -155,7 +155,12 @@ async def confirm_payment(
                 status=PaymentStatus.SUCCEEDED if payment_data.get('status') == 'DONE' else PaymentStatus.PENDING,
                 payment_provider="TOSS_PAYMENTS",
                 provider_payment_id=payment_data.get('paymentKey', ''),
-                payment_method=PaymentMethod.TOSS_PAY,  # 토스페이먼츠 사용
+                # 토스는 결제 수단을 한글로 돌려준다("카드"/"가상계좌"/"계좌이체").
+                # PaymentMethod 에는 TOSS_PAY 라는 멤버가 없다 - 토스는 결제 수단이
+                # 아니라 PG 사이고, 그건 바로 아래 payment_provider 에 들어간다.
+                # 예전에는 없는 멤버를 읽어 AttributeError 가 났고, 결제 승인이
+                # 성공해도 이 줄에서 터져 기록이 남지 않았다.
+                payment_method=PaymentMethod(parse_payment_method(payment_data.get('method') or '')),
                 payment_key=payment_data.get('paymentKey'),
                 order_id=payment_data.get('orderId'),
                 order_name=payment_data.get('orderName'),

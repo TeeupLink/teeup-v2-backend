@@ -126,6 +126,7 @@ class PaymentStatus(str, Enum):
     SUCCEEDED = "SUCCEEDED"
     PENDING = "PENDING"
     FAILED = "FAILED"
+    CANCELED = "CANCELED"   # 결제 취소. Payment.canceled_at/cancel_reason 과 짝
 
 class PaymentMethod(str, Enum):
     CARD = "CARD"

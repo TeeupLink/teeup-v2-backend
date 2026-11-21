@@ -224,7 +224,7 @@ async def get_rounding_meetings(page: int = Query(1, ge=1),
         if not club_ids:
             return PaginatedResponse(data=[], total=0, page=page, limit=limit, total_pages=0)
 
-        # 라운딩 모임 조회 (ROUNDING 타입) - DELETED 상태 제외
+        # 라운딩 모임 조회 (ROUND 타입)
         # 프라이빗 라운딩 필터링: 참가자이거나 생성자인 경우만 표시
         # 사용자가 참가한 프라이빗 라운딩 ID 목록
         user_participant_meeting_ids = select(MeetingParticipant.meeting_id).where(
@@ -242,7 +242,11 @@ async def get_rounding_meetings(page: int = Query(1, ge=1),
         query = db.query(Meeting).filter(
             Meeting.club_id.in_(club_ids),
             Meeting.meeting_type == MeetingType.ROUND,
-            Meeting.status != MeetingStatus.DELETED,
+            # 삭제 상태로 거르지 않는다. 모임 삭제는 하드 삭제라서
+            # (base.py 의 delete_meeting, types/rounds.py 의 delete_round 가
+            # db.delete(meeting) 를 호출한다) 삭제된 행은 애초에 조회되지
+            # 않는다. MeetingStatus 에는 DELETED 멤버가 없어서 예전에는
+            # 이 줄이 AttributeError 를 내고 이 경로가 항상 500 이었다.
             # 프라이빗 라운딩 필터링
             or_(
                 Meeting.is_private == False,  # 일반 라운딩

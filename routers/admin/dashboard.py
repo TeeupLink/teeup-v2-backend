@@ -47,14 +47,19 @@ async def get_admin_dashboard(
             elif p.status == PaymentStatus.PENDING:
                 payment_stats["pending_count"] += 1
 
-        club_stats = {"approved_count": 0, "pending_count": 0, "rejected_count": 0, "total_members": 0}
+        # ClubStatus 는 ACTIVE / INACTIVE 둘뿐이고 Club.status 는 그 열거형을
+        # 쓰는 DB 컬럼이라 다른 값이 들어갈 수 없다. 예전에는 여기서
+        # ClubStatus.PENDING / ClubStatus.REJECTED 를 읽었는데 그런 멤버가
+        # 없어서, ACTIVE 가 아닌 클럽이 하나라도 있으면 이 대시보드가
+        # AttributeError 로 500 이 됐다. 클럽에는 승인·반려 절차가 없다 -
+        # 백오피스가 보여주는 "가입신청"(pending_count)은 클럽 상태가 아니라
+        # MembershipStatus.PENDING 이고 GET /admin/clubs 에서 따로 온다.
+        club_stats = {"active_count": 0, "inactive_count": 0, "total_members": 0}
         for club in db.query(Club).filter(Club.deleted_at.is_(None)).all():
             if club.status == ClubStatus.ACTIVE:
-                club_stats["approved_count"] += 1
-            elif club.status == ClubStatus.PENDING:
-                club_stats["pending_count"] += 1
-            elif club.status == ClubStatus.REJECTED:
-                club_stats["rejected_count"] += 1
+                club_stats["active_count"] += 1
+            else:
+                club_stats["inactive_count"] += 1
             club_stats["total_members"] += db.query(ClubMembership).filter(
                 ClubMembership.club_id == club.id, ClubMembership.status == "ACTIVE"
             ).count()

@@ -1016,10 +1016,16 @@ async def get_my_payment_methods(db: Session = Depends(get_db), current_user: Us
 
 
 def _mask_payment_info(payment_method: str, payment_key: str = None) -> str:
-    """결제 수단 정보 마스킹"""
+    """결제 수단 정보 마스킹.
+
+    들어오는 값은 PaymentMethod 의 값(CARD / VIRTUAL_ACCOUNT / TRANSFER)이다
+    - 호출 측이 `payment.payment_method.value` 를 넘긴다. 예전에는
+    "BANK_TRANSFER" 와 비교해서 계좌이체 결제가 이 분기를 타지 못하고
+    맨 아래 기본값으로 떨어졌다. PaymentMethod 에는 그런 멤버가 없다.
+    """
     if payment_method == "CARD":
         return "****-****-****-1234"
-    elif payment_method == "BANK_TRANSFER":
+    elif payment_method == "TRANSFER":
         return "****-****-****-5678"
     elif payment_method == "VIRTUAL_ACCOUNT":
         return "****-****-****-9012"

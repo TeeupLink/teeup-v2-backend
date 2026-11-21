@@ -68,15 +68,15 @@ class TeamFormationEngine:
         pace_variance = len(set(m.pace_preference or '보통' for m in team_members))
         pace_score = max(0, 100 - pace_variance * 20)  # 페이스가 비슷할수록 높은 점수
 
-        # 3. 신입/베테랑 균형 점수 (BEGINNER_FRIENDLY 모드)
+        # 3. 신입/베테랑 균형 점수
+        # TeamFormationMode 가 2단계 선택(성별 분리·혼합 x 핸디캡·직전성적·랜덤)으로
+        # 바뀌면서 BEGINNER_FRIENDLY 모드가 없어졌다. 그런데 이 함수는 사라진
+        # 멤버를 계속 읽고 있었다. 비교는 분기 조건과 무관하게 **항상** 평가되므로
+        # 이 함수가 불리면 무조건 AttributeError 였다. 지금은 아무도 호출하지
+        # 않아서 드러나지 않았을 뿐이다.
+        # 모드가 없어진 이상 가점 조건도 없으므로 중립값을 쓴다. 신입/베테랑
+        # 균형을 다시 넣으려면 TeamFormationMode 에 모드를 먼저 추가해야 한다.
         beginner_score = 100
-        if formation_mode == TeamFormationMode.BEGINNER_FRIENDLY:
-            newbies = [m for m in team_members if m.is_newbie]
-            veterans = [m for m in team_members if not m.is_newbie]
-            if len(newbies) > 0 and len(veterans) == 0:
-                beginner_score = 0  # 신입만 있는 팀은 점수 없음
-            elif len(newbies) > 0 and len(veterans) > 0:
-                beginner_score = 100  # 신입과 베테랑이 함께 있으면 만점
 
         # 4. 선호도 충족 점수
         preference_score = 0
