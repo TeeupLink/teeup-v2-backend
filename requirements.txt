@@ -1,15 +1,73 @@
-fastapi
-fastapi_mail
-protobuf
-pydantic
-pydantic_settings
-PyJWT
-cryptography
-PyMySQL
-pytest
-Requests
-SQLAlchemy
-starlette
-uvicorn
-firebase-admin
-python-multipart
+# 운영 이미지(teeup-backend-00022, python:3.12-slim)에 실제로 설치된 버전으로 고정한다.
+# 버전을 비워 두면 빌드할 때마다 그날의 최신을 받아, 코드 변경 없이 재배포만
+# 해도 운영 의존성이 바뀐다(00021 -> 00022 에서 charset-normalizer 가 실제로 바뀌었다).
+#
+# 올릴 때: 패키지를 하나씩 올려 테스트하고, 빌드한 이미지에서
+#   docker run --rm --entrypoint pip <이미지> freeze
+# 결과로 이 파일을 갱신한다. 간접 의존성도 함께 맞춘다.
+
+# 직접 의존성
+fastapi==0.165.0
+fastapi_mail==1.6.8
+protobuf==7.36.2
+pydantic==2.14.4
+pydantic_settings==2.16.3
+PyJWT==2.15.1
+cryptography==50.0.2
+PyMySQL==1.2.4
+pytest==9.2.0
+Requests==2.34.2
+SQLAlchemy==2.1.9
+starlette==1.10.0
+uvicorn==0.54.0
+firebase-admin==7.8.0
+python-multipart==0.0.34
+
+# 간접 의존성 (위 패키지들이 끌어오는 것)
+aiosmtplib==5.1.3
+annotated-doc==0.0.7
+annotated-types==0.8.0
+anyio==4.16.0
+blinker==1.9.0
+CacheControl==0.15.0
+certifi==2026.11.20
+cffi==2.1.1
+charset-normalizer==3.5.3
+click==8.5.1
+dnspython==2.9.2
+email-validator==2.4.0
+google-api-core==2.44.0
+google-auth==2.63.1
+google-cloud-core==2.8.0
+google-cloud-firestore==2.34.1
+google-cloud-storage==3.17.1
+google-crc32c==1.9.0
+google-resumable-media==2.11.0
+googleapis-common-protos==1.76.0
+grpcio==1.85.3
+grpcio-status==1.85.3
+h11==0.16.0
+h2==4.4.1
+hpack==4.2.0
+httpcore==1.0.9
+httpx==0.28.1
+hyperframe==6.1.0
+idna==3.20
+iniconfig==2.3.1
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+msgpack==1.2.4
+opentelemetry-api==1.45.2
+packaging==26.3
+pluggy==1.7.0
+proto-plus==1.29.0
+pyasn1==0.6.5
+pyasn1_modules==0.4.2
+pycparser==3.12
+pydantic_core==2.50.5
+Pygments==2.21.0
+python-dotenv==1.2.4
+regex==2026.11.19
+typing_extensions==4.16.0
+typing-inspection==0.4.5
+urllib3==2.8.0
